@@ -586,7 +586,7 @@ class AIModule:
         req = urllib.request.Request(
             "https://api.groq.com/openai/v1/chat/completions",
             data=body,
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "User-Agent": "vidyax/1.0"},
         )
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
@@ -844,7 +844,7 @@ class _AI:
             "messages": [{"role": "user", "content": str(prompt)}]}).encode()
         req = _ureq.Request("https://api.groq.com/openai/v1/chat/completions",
             data=body, headers={"Authorization": "Bearer " + key,
-                                "Content-Type": "application/json"})
+                                "Content-Type": "application/json","User-Agent": "vidyax/1.0"})
         try:
             with _ureq.urlopen(req, timeout=60) as r:
                 data = _json.loads(r.read().decode())

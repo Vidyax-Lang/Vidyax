@@ -1,6 +1,6 @@
 use ai
 
-ai.open "llama-3.3-70b-versatile"
+ai.open "llama-3.1-8b-instant"
 
 answer: ai.ask "List 3 benefits of exercise"
 
