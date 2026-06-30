@@ -1,4 +1,4 @@
-# Vidyax — v1.0
+# Vidyax — v1.3se 
 
 > Named after the Sanskrit word *vidyā* (विद्या) — "knowledge".
 

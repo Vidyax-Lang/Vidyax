@@ -566,27 +566,37 @@ def vidyax_truthy(v):
 class AIModule:
     """Built-in 'ai' module. ai.open "model" to pick model, ai.ask "..." to ask."""
     def __init__(self):
-        self.model = os.environ.get("VIDYAX_MODEL", "llama-3.3-70b-versatile")
+        self.provider = "groq"
+        self.model = os.environ.get("VIDYAX_MODEL", "llama-3.1-8b-instant")
 
-    def open(self, model):
-        self.model = str(model)
-        return self
+    def open(self, spec):
+        spec = str(spec)
+        if ":" in spec:
+            self.provider, self.model = spec.split(":", 1)
+        else:
+            self.model = spec
+            return self
 
     def ask(self, prompt):
-        key = os.environ.get("GROQ_API_KEY")
+        if self.provider == "openai":
+            url = "https://api.openai.com/v1/chat/completions"
+            keyname = "OPENAI_API_KEY"
+        else:
+            url = "https://api.groq.com/openai/v1/chat/completions"
+            keyname = "GROQ_API_KEY"
+        key = os.environ.get(keyname)
         if not key:
             raise VidyaxError(
-                "GROQ_API_KEY is not set. Run: export GROQ_API_KEY=...  "
+                keyname + " is not set. Run: export " + keyname + "=..."
                 "(ai.ask needs internet & an API key)"
             )
         body = json.dumps({
             "model": self.model,
-            "messages": [{"role": "user", "content": str(prompt)}],
-        }).encode()
+            "messages": [{"role": "user", "content": str(prompt)}]}).encode()
         req = urllib.request.Request(
-            "https://api.groq.com/openai/v1/chat/completions",
+            url,
             data=body,
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "User-Agent": "vidyax/1.0"},
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "User-Agent": "vidyax/1.0"}
         )
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
