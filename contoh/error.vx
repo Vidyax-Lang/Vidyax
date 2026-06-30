@@ -1,0 +1,25 @@
+# Penanganan error pakai try / catch
+
+# Tangkap error, ambil pesannya ke variabel
+try:
+    hasil: 10 / 0
+catch e:
+    print "Tertangkap: " + e
+
+# Fungsi pembagian yang aman
+func bagiAman(a, b):
+    try:
+        return a / b
+    catch e:
+        return -1
+
+print "10 / 2 = " + bagiAman(10, 2)
+print "10 / 0 = " + bagiAman(10, 0)
+
+# catch tanpa variabel (kalau gak butuh detail)
+try:
+    print barangGhaib
+catch:
+    print "ada yang salah, tapi program lanjut"
+
+print "selesai dengan aman"

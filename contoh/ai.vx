@@ -1,0 +1,7 @@
+use ai
+
+ai.open "llama-3.3-70b-versatile"
+
+answer: ai.ask "List 3 benefits of exercise"
+
+print answer

@@ -1,0 +1,13 @@
+# Ambil data dari internet pakai get(url)
+# Mulai sederhana: GET request, balikin teks respons.
+
+print "Mengambil data..."
+hasil: get("https://api.github.com/zen")
+
+# get() tidak pernah bikin program crash:
+# kalau gagal, dia balikin teks yang diawali "ERROR_"
+print hasil
+
+# contoh dipakai dalam logika
+data: get("https://example.com")
+print "Panjang halaman: " + len(data) + " karakter"

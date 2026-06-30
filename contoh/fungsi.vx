@@ -1,0 +1,33 @@
+# rekursi: faktorial
+func factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+print "5! = " + factorial(5)
+
+# rekursi: fibonacci
+func fib(n):
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+print "fib(10) = " + fib(10)
+
+# fungsi manggil fungsi
+func double(x):
+    return x * 2
+
+func quad(x):
+    return double(double(x))
+
+print "quad(5) = " + quad(5)
+
+# fungsi pakai builtin + loop di dalam
+func sumList(xs):
+    t: 0
+    for x in xs:
+        t: t + x
+    return t
+
+print "sumList = " + sumList([4, 8, 15, 16, 23, 42])

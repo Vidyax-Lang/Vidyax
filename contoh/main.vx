@@ -1,0 +1,46 @@
+#!/usr/bin/env vax
+# Vidyax v0.1 full demo
+print "Hello, World!"
+
+# Variables
+name: "Daffa"
+print "Hello " + name
+
+# Numbers & conditionals
+age: 19
+if age >= 17:
+    print "Adult"
+else:
+    print "Minor"
+
+# Repeat N times
+rpt 3:
+    print "loop"
+
+# Iterate a list
+fruits: ["apple", "mango", "orange"]
+for f in fruits:
+    print "fruit: " + f
+
+# Functions
+func add(a, b):
+    return a + b
+
+print "result = " + add(10, 20)
+
+# elif + and / or / not
+score: 75
+if score >= 90:
+    print "A"
+elif score >= 70 and not false:
+    print "B"
+else:
+    print "C"
+
+# break / continue
+for i in [1, 2, 3, 4, 5]:
+    if i == 4:
+        break
+    if i == 2:
+        continue
+    print "i = " + i

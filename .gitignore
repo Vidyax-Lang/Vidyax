@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+contoh/*.py
+coba.vx
+cek.vx
+uji.vx
+loop.vx
+.vscode/
+.idea/
+.DS_Store

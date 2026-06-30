@@ -1,0 +1,28 @@
+# built-in functions
+print len("vax")
+print len([1, 2, 3, 4])
+print range(5)
+print range(2, 6)
+print upper("halo")
+print lower("DUNIA")
+print split("a,b,c", ",")
+print join(["x", "y", "z"], "-")
+print abs(-9)
+print sum([10, 20, 30])
+print max([3, 99, 7])
+print min(4, 1, 8)
+print type(123)
+print type("hi")
+print type([1])
+print type(true)
+
+# range dipakai di loop
+total: 0
+for i in range(1, 6):
+    total: total + i
+print "sum 1..5 = " + total
+
+# push ke daftar
+xs: [1, 2]
+push(xs, 3)
+print xs
