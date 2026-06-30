@@ -62,12 +62,53 @@ the syntax tree. On a recursive `fib(27)` + a 300k-iteration loop:
 | HTTP         | get(url) -> fetches a URL, returns text (or an ERROR_ string on failure) |
 | REPL         | run `vax` with no file to type code live |
 
-### Enabling AI (ai.ask)
+## AI Features (BYOK — Bring Your Own Key)
 
-```bash
-export GROQ_API_KEY=gsk_xxx
-export VIDYAX_MODEL=llama-3.3-70b-versatile   # optional
-vidyax contoh/ai.vx
+Vidyax uses a **BYOK** model: you use your own API key. Vidyax never stores or uses anyone else's key. Free & secure.
+
+### 1. Get an API Key
+
+**Groq (free, recommended to start):**
+- Go to https://console.groq.com/keys
+- Log in, click **Create API Key**, and copy it (looks like `gsk_...`)
+
+**OpenAI (optional):**
+- Go to https://platform.openai.com/api-keys
+- Create a key (looks like `sk-...`)
+
+### 2. Set Your API Key
+
+**Temporary (lost when the terminal closes):**
+\`\`\`bash
+export GROQ_API_KEY=gsk_xxxxxxxx
+\`\`\`
+
+**Permanent (recommended):**
+\`\`\`bash
+echo 'export GROQ_API_KEY=gsk_xxxxxxxx' >> ~/.bashrc
+source ~/.bashrc
+\`\`\`
+
+### 3. Use It in Code
+
+**Groq (default):**
+\`\`\`
+use ai
+ai.open "llama-3.1-8b-instant"
+answer: ai.ask "List 3 benefits of exercise"
+print answer
+\`\`\`
+
+**Choose another provider with a `provider:model` prefix:**
+\`\`\`
+ai.open "groq:llama-3.1-8b-instant"
+ai.open "openai:gpt-4o-mini"
+\`\`\`
+Without a prefix, Vidyax defaults to Groq.
+
+> **Note:** Each provider needs its own environment key — `GROQ_API_KEY` for Groq, `OPENAI_API_KEY` for OpenAI. Groq model list: https://console.groq.com/docs/models. If you get a 403 error, the model is usually not available for your account; try `llama-3.1-8b-instant`.
+
+
 ```
 
 ## Roadmap (NOT runnable yet — stubbed on purpose)
