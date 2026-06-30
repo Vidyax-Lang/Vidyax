@@ -3,7 +3,7 @@
 print "Hello, World!"
 
 # Variables
-name: "Daffa"
+name: "NAdev"
 print "Hello " + name
 
 # Numbers & conditionals
