@@ -807,7 +807,38 @@ class Interpreter:
         except ReturnSignal as r:
             return r.value
         return None
+# =====================================================================
+# Type checker (semantic pass) — runs after parse, before transpile
+# =====================================================================
 
+def _walk(node):
+    """Visit this node + all its descendants. Generic, works for any Node."""
+    yield node
+    for value in vars(node).values():
+        if isinstance(value, Node):
+            yield from _walk(value)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, Node):
+                    yield from _walk(item)
+
+_TYPE_NAMES = {Number: "number", Str: "text", Bool: "boolean",
+               Null: "null", ListLit: "list"}
+
+def infer_type(node):
+    """Guess a node's type if it can be known from a literal. None = unknown."""
+    return _TYPE_NAMES.get(type(node))
+
+_ARITH = {"-", "/", "%"}
+
+def type_check(program):
+    for node in _walk(program):
+        if isinstance(node, BinOp) and node.op in _ARITH:
+            for side in (node.l, node.r):
+                t = infer_type(side)
+                if t is not None and t != "number":
+                    raise VidyaxError(
+                        f"cannot use '{node.op}' on {t}, only numbers", node.line)
 
 # =====================================================================
 # 6. TRANSPILER  (Vidyax -> Python, for speed)
@@ -1083,6 +1114,7 @@ def compile_to_python(source, standalone=True):
     """Vidyax source -> Python source string."""
     tokens = lex(source)
     ast = Parser(tokens).parse()
+    type_check(ast)
     body = Transpiler().transpile(ast)
     parts = []
     if standalone:
@@ -1153,6 +1185,7 @@ def walk_file(path):
     try:
         tokens = lex(source)
         ast = Parser(tokens).parse()
+        type_check(ast)
         Interpreter().run(ast)
     except VidyaxError as e:
         print(e.show())
