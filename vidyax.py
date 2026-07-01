@@ -563,11 +563,22 @@ def vidyax_truthy(v):
     return True
 
 
+def friendly_error(e):
+    """Reword a raw Python runtime error (e.g. TypeError from a dynamic
+    type mismatch the static type_check() pass couldn't see, since the
+    values only become known at runtime) into Vidyax-style wording."""
+    m = str(e)
+    if isinstance(e, NameError):
+        return m.replace("name '", "variable '", 1)
+    return m
+
+
 class AIModule:
     """Built-in 'ai' module. ai.open "model" to pick model, ai.ask "..." to ask."""
     def __init__(self):
         self.provider = "groq"
         self.model = os.environ.get("VIDYAX_MODEL", "llama-3.1-8b-instant")
+        self.system_prompt = None
 
     def open(self, spec):
         spec = str(spec)
@@ -576,6 +587,9 @@ class AIModule:
         else:
             self.model = spec
             return self
+
+    def system(self, text):
+        self.system_prompt = str(text)
 
     def ask(self, prompt):
         if self.provider == "openai":
@@ -590,9 +604,13 @@ class AIModule:
                 keyname + " is not set. Run: export " + keyname + "=..."
                 "(ai.ask needs internet & an API key)"
             )
+        messages = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": str(prompt)})
         body = json.dumps({
             "model": self.model,
-            "messages": [{"role": "user", "content": str(prompt)}]}).encode()
+            "messages": messages}).encode()
         req = urllib.request.Request(
             url,
             data=body,
@@ -886,14 +904,21 @@ def _index(o, i):
 class _AI:
     def __init__(self):
         self.model = _os.environ.get("VIDYAX_MODEL", "llama-3.3-70b-versatile")
+        self.system_prompt = None
     def open(self, model):
         self.model = str(model); return self
+    def system(self, text):
+        self.system_prompt = str(text)
     def ask(self, prompt):
         key = _os.environ.get("GROQ_API_KEY")
         if not key:
             raise _VidyaxRuntime("GROQ_API_KEY is not set (ai.ask needs internet & an API key)")
+        messages = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": str(prompt)})
         body = _json.dumps({"model": self.model,
-            "messages": [{"role": "user", "content": str(prompt)}]}).encode()
+            "messages": messages}).encode()
         req = _ureq.Request("https://api.groq.com/openai/v1/chat/completions",
             data=body, headers={"Authorization": "Bearer " + key,
                                 "Content-Type": "application/json","User-Agent": "vidyax/1.0"})
@@ -1140,6 +1165,8 @@ def compile_to_python(source, standalone=True):
     parts.append("        _main()")
     parts.append("    except _VidyaxRuntime as _e:")
     parts.append("        print('[Vidyax] ' + str(_e)); _sys.exit(1)")
+    parts.append("    except Exception as _e:")
+    parts.append("        print('[Vidyax] ' + _errtext(_e)); _sys.exit(1)")
     return "\n".join(parts) + "\n"
 
 
@@ -1154,7 +1181,10 @@ def run_fast(source):
         # _VidyaxRuntime defined inside ns
         if type(e).__name__ == "_VidyaxRuntime":
             print("[Vidyax] " + str(e)); sys.exit(1)
-        raise
+        # catch-all: dynamic runtime errors the static type_check() pass
+        # couldn't see (values only known at runtime) -- report them
+        # Vidyax-style instead of a raw Python traceback.
+        print("[Vidyax] " + ns["_errtext"](e)); sys.exit(1)
 
 
 def build_file(path):
@@ -1200,6 +1230,11 @@ def walk_file(path):
         Interpreter().run(ast)
     except VidyaxError as e:
         print(e.show())
+        sys.exit(1)
+    except Exception as e:
+        # catch-all: dynamic runtime errors the static type_check() pass
+        # couldn't see (values only known at runtime).
+        print("[Vidyax] " + friendly_error(e))
         sys.exit(1)
 
 

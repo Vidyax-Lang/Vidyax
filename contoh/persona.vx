@@ -1,0 +1,3 @@
+use ai
+ai.system "kamu bocil 5 tahun, jawab pakai baasa anak-anak"
+print ai.ask "Apa itu komputer?"
