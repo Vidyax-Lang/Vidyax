@@ -830,6 +830,7 @@ def infer_type(node):
     return _TYPE_NAMES.get(type(node))
 
 _ARITH = {"-", "/", "%"}
+_COMPARE = {"<", ">", "<=", ">="}
 
 def type_check(program):
     for node in _walk(program):
@@ -839,6 +840,16 @@ def type_check(program):
                 if t is not None and t != "number":
                     raise VidyaxError(
                         f"cannot use '{node.op}' on {t}, only numbers", node.line)
+        if isinstance(node, BinOp) and node.op in _COMPARE:
+            lt, rt = infer_type(node.l), infer_type(node.r)
+            for t in (lt, rt):
+                if t is not None and t not in ("number", "text"):
+                    raise VidyaxError(
+                        f"cannot use '{node.op}' on {t}, only numbers or text", node.line)
+            if lt is not None and rt is not None and lt != rt:
+                raise VidyaxError(
+                    f"cannot use '{node.op}' between {lt} and {rt}, "
+                    "both sides must be the same type", node.line)
 
 # =====================================================================
 # 6. TRANSPILER  (Vidyax -> Python, for speed)

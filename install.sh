@@ -8,8 +8,8 @@ LIB_DIR="$HOME/.local/share/vidyax"
 BIN_DIR="$HOME/.local/bin"
 
 mkdir -p "$LIB_DIR" "$BIN_DIR"
-cp "$SRC_DIR/vidyax.py" "$LIB_DIR/vidyax.py"
-cp "$SRC_DIR/tests.py" "$LIB_DIR/tests.py" 2>/dev/null || true
+ln -sf "$SRC_DIR/vidyax.py" "$LIB_DIR/vidyax.py"
+ln -sf "$SRC_DIR/tests.py" "$LIB_DIR/tests.py" 2>/dev/null || true
 
 cat > "$BIN_DIR/vidyax" << 'LAUNCH'
 #!/usr/bin/env bash
