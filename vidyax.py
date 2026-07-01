@@ -1238,6 +1238,37 @@ def walk_file(path):
         sys.exit(1)
 
 
+def check_source(source):
+    """Static check only: lex + parse + type_check, NO execution.
+    Returns a list of {"line", "message"} dicts (empty if the code is clean).
+    Used by editors for live error reporting."""
+    errors = []
+    try:
+        tokens = lex(source)
+        ast = Parser(tokens).parse()
+        type_check(ast)
+    except VidyaxError as e:
+        errors.append({"line": e.line if e.line is not None else 1, "message": e.msg})
+    except Exception:
+        # Never leak a Python traceback to the editor; just report nothing.
+        return []
+    return errors
+
+
+def check_file(path):
+    """Read from a file (or STDIN if path == '-'), print JSON errors, exit 0."""
+    try:
+        if path == "-":
+            source = sys.stdin.read()
+        else:
+            with open(path, encoding="utf-8") as f:
+                source = f.read()
+    except Exception:
+        print("[]")
+        return
+    print(json.dumps(check_source(source)))
+
+
 def run_text(source):
     tokens = lex(source)
     ast = Parser(tokens).parse()
@@ -1303,6 +1334,7 @@ def main():
             "  vidyax run <file.vx>       run a file\n"
             "  vidyax build <file.vx>     compile to a standalone <file>.py\n"
             "  vidyax walk <file.vx>      run with the tree-walker (debug)\n"
+            "  vidyax check <file.vx|->    static check only, JSON errors (- = stdin)\n"
             "  vidyax test                run built-in tests\n"
         )
         return
@@ -1323,6 +1355,10 @@ def main():
         if len(args) < 2:
             print("[Vidyax] usage: vidyax walk <file.vx>"); sys.exit(1)
         walk_file(args[1])
+    elif cmd == "check":
+        if len(args) < 2:
+            print("[Vidyax] usage: vidyax check <file.vx | ->"); sys.exit(1)
+        check_file(args[1])
     elif cmd == "test":
         from tests import run_all_tests  # noqa
         run_all_tests()
