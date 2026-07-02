@@ -8,3 +8,5 @@ loop.vx
 .vscode/
 .idea/
 .DS_Store
+tests.py
+vidyax.py

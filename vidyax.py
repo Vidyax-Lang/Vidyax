@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Vidyax - interpreter v1.0
+Vidyax - interpreter v1.1
 "Code as simple as writing instructions."
 
 Single file: lexer -> parser -> evaluator + CLI.
+Two engines, ONE runtime: the tree-walker and the transpiler both call the
+same helpers defined in the RUNTIME string, so behaviour stays identical
+by construction (and is enforced by the differential tests).
 Usage:
     python vidyax.py run main.vx
     python vidyax.py test
@@ -15,6 +18,8 @@ import os
 import json
 import urllib.request
 import urllib.error
+
+VERSION = "1.1"
 
 # =====================================================================
 # 1. TOKEN & LEXER
@@ -231,6 +236,8 @@ class Parser:
     def __init__(self, tokens):
         self.toks = tokens
         self.pos = 0
+        self.loop_depth = 0  # break/continue only valid when > 0
+        self.func_depth = 0  # return only valid when > 0
 
     def peek(self, k=0):
         return self.toks[self.pos + k]
@@ -253,6 +260,17 @@ class Parser:
     def skip_newlines(self):
         while self.at("NEWLINE"):
             self.pos += 1
+
+    def guard_name(self, tok):
+        """Built-in function names are reserved. Shadowing them would make
+        the walker and the transpiler disagree (the transpiler rewrites
+        built-in calls statically), so we reject it early — this also gives
+        editors a clean static error via `vidyax check`."""
+        if tok.value in BUILTIN_NAMES:
+            raise VidyaxError(
+                f"'{tok.value}' is a built-in function name — pick a different name",
+                tok.line)
+        return tok.value
 
     def parse(self):
         return Program(self.statements_until(("EOF",)))
@@ -288,14 +306,18 @@ class Parser:
             if t.value == "use":      return self.stmt_import()
             if t.value == "try":      return self.stmt_try()
             if t.value == "break":
+                if self.loop_depth == 0:
+                    raise VidyaxError("'break' only works inside a loop", t.line)
                 self.eat(); self.eat("NEWLINE"); return Break()
             if t.value == "continue":
+                if self.loop_depth == 0:
+                    raise VidyaxError("'continue' only works inside a loop", t.line)
                 self.eat(); self.eat("NEWLINE"); return Continue()
             if t.value in ("agent", "go"):
                 raise VidyaxError(f"'{t.value}' is not supported yet (roadmap)", t.line)
         # assignment: NAME ':' expr
         if t.kind == "NAME" and self.peek(1).kind == "OP" and self.peek(1).value == ":":
-            name = self.eat("NAME").value
+            name = self.guard_name(self.eat("NAME"))
             self.eat("OP", ":")
             value = self.expression()
             self.eat("NEWLINE")
@@ -331,33 +353,44 @@ class Parser:
     def stmt_repeat(self):
         self.eat("KEYWORD", "rpt")
         count = self.expression()
+        self.loop_depth += 1
         body = self.block()
+        self.loop_depth -= 1
         return RepeatN(count, body)
 
     def stmt_for(self):
         self.eat("KEYWORD", "for")
-        var = self.eat("NAME").value
+        var = self.guard_name(self.eat("NAME"))
         self.eat("KEYWORD", "in")
         it = self.expression()
+        self.loop_depth += 1
         body = self.block()
+        self.loop_depth -= 1
         return ForEach(var, it, body)
 
     def stmt_func(self):
         self.eat("KEYWORD", "func")
-        name = self.eat("NAME").value
+        name = self.guard_name(self.eat("NAME"))
         self.eat("OP", "(")
         params = []
         if not self.at("OP", ")"):
-            params.append(self.eat("NAME").value)
+            params.append(self.guard_name(self.eat("NAME")))
             while self.at("OP", ","):
                 self.eat("OP", ",")
-                params.append(self.eat("NAME").value)
+                params.append(self.guard_name(self.eat("NAME")))
         self.eat("OP", ")")
+        saved_loop = self.loop_depth
+        self.loop_depth = 0   # a break inside a func can't target an outer loop
+        self.func_depth += 1
         body = self.block()
+        self.func_depth -= 1
+        self.loop_depth = saved_loop
         return FuncDef(name, params, body)
 
     def stmt_return(self):
-        self.eat("KEYWORD", "return")
+        t = self.eat("KEYWORD", "return")
+        if self.func_depth == 0:
+            raise VidyaxError("'return' only works inside a function", t.line)
         value = None
         if not self.at("NEWLINE"):
             value = self.expression()
@@ -379,7 +412,7 @@ class Parser:
         self.eat("KEYWORD", "catch")
         err_var = None
         if self.at("NAME"):
-            err_var = self.eat("NAME").value
+            err_var = self.guard_name(self.eat("NAME"))
         catch_body = self.block()
         return TryCatch(try_body, err_var, catch_body)
 
@@ -528,15 +561,26 @@ class Function:
         self.decl = decl; self.closure = closure
 
 class Environment:
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, declared=()):
         self.vars = {}
         self.parent = parent
+        # Names assigned somewhere in this function's body.
+        # Scoping rule (identical to the transpiled Python, by design):
+        # a name assigned anywhere in a function is LOCAL to that function.
+        # Reading it before it has a value is an error, and it never leaks
+        # to the outer scope. Names never assigned here read through to the
+        # enclosing scope as usual.
+        self.declared = set(declared)
 
     def get(self, name, line=None):
         env = self
         while env:
             if name in env.vars:
                 return env.vars[name]
+            if name in env.declared:
+                raise VidyaxError(
+                    f"variable '{name}' is assigned in this function "
+                    "but used before it has a value", line)
             env = env.parent
         raise VidyaxError(f"variable '{name}' is not defined", line)
 
@@ -544,16 +588,8 @@ class Environment:
         self.vars[name] = value
 
 
-def vidyax_str(v):
-    if v is True:  return "true"
-    if v is False: return "false"
-    if v is None:  return "null"
-    if isinstance(v, float):
-        return str(int(v)) if v.is_integer() else str(v)
-    if isinstance(v, list):
-        return "[" + ", ".join(vidyax_str(x) for x in v) + "]"
-    return str(v)
-
+# vidyax_str is bound below from the shared RUNTIME (_vstr), so the walker
+# and the transpiled code can never drift apart on value formatting.
 
 def vidyax_truthy(v):
     if isinstance(v, bool): return v
@@ -563,72 +599,40 @@ def vidyax_truthy(v):
     return True
 
 
-def friendly_error(e):
-    """Reword a raw Python runtime error (e.g. TypeError from a dynamic
-    type mismatch the static type_check() pass couldn't see, since the
-    values only become known at runtime) into Vidyax-style wording."""
-    m = str(e)
-    if isinstance(e, NameError):
-        return m.replace("name '", "variable '", 1)
-    return m
+def assigned_names(body):
+    """Every name that gets a binding in this function body: assignments,
+    loop vars, catch vars, nested func names, `use ai`. Does NOT descend
+    into nested FuncDef bodies — those are their own scope. Used by
+    call_function() so the walker follows the exact same scoping rule the
+    transpiled Python follows naturally."""
+    names = set()
+    stack = list(body)
+    while stack:
+        s = stack.pop()
+        t = type(s).__name__
+        if t == "Assign":
+            names.add(s.name)
+        elif t == "If":
+            stack.extend(s.body); stack.extend(s.orelse)
+        elif t == "RepeatN":
+            stack.extend(s.body)
+        elif t == "ForEach":
+            names.add(s.var); stack.extend(s.body)
+        elif t == "TryCatch":
+            if s.err_var:
+                names.add(s.err_var)
+            stack.extend(s.try_body); stack.extend(s.catch_body)
+        elif t == "FuncDef":
+            names.add(s.name)  # the func name binds locally; body = new scope
+        elif t == "Import":
+            names.add(s.name)  # `use ai` binds the name 'ai'
+    return names
 
 
-class AIModule:
-    """Built-in 'ai' module. ai.open "model" to pick model, ai.ask "..." to ask."""
-    def __init__(self):
-        self.provider = "groq"
-        self.model = os.environ.get("VIDYAX_MODEL", "llama-3.1-8b-instant")
-        self.system_prompt = None
-
-    def open(self, spec):
-        spec = str(spec)
-        if ":" in spec:
-            self.provider, self.model = spec.split(":", 1)
-        else:
-            self.model = spec
-            return self
-
-    def system(self, text):
-        self.system_prompt = str(text)
-
-    def ask(self, prompt):
-        if self.provider == "openai":
-            url = "https://api.openai.com/v1/chat/completions"
-            keyname = "OPENAI_API_KEY"
-        else:
-            url = "https://api.groq.com/openai/v1/chat/completions"
-            keyname = "GROQ_API_KEY"
-        key = os.environ.get(keyname)
-        if not key:
-            raise VidyaxError(
-                keyname + " is not set. Run: export " + keyname + "=..."
-                "(ai.ask needs internet & an API key)"
-            )
-        messages = []
-        if self.system_prompt:
-            messages.append({"role": "system", "content": self.system_prompt})
-        messages.append({"role": "user", "content": str(prompt)})
-        body = json.dumps({
-            "model": self.model,
-            "messages": messages}).encode()
-        req = urllib.request.Request(
-            url,
-            data=body,
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json", "User-Agent": "vidyax/1.0"}
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                data = json.loads(resp.read().decode())
-            return data["choices"][0]["message"]["content"]
-        except urllib.error.HTTPError as e:
-            raise VidyaxError(f"AI failed ({e.code}): {e.read().decode()[:200]}")
-        except Exception as e:
-            raise VidyaxError(f"AI failed: {e}")
-
-
-class BoundMethod:
-    def __init__(self, fn): self.fn = fn
-    def __call__(self, *a): return self.fn(*a)
+# The AI module lives in the shared RUNTIME below (class _AI) — one
+# implementation for both engines. The old AIModule/BoundMethod pair that
+# duplicated it (and drifted: different default model, no provider routing
+# in the transpiled copy) is gone.
 
 
 # =====================================================================
@@ -638,9 +642,8 @@ class BoundMethod:
 class Interpreter:
     def __init__(self):
         self.global_env = Environment()
-        self.modules = {}
         for name, fn in BUILTINS.items():
-            self.global_env.set(name, BoundMethod(fn))
+            self.global_env.set(name, fn)
 
     def run(self, program):
         for stmt in program.body:
@@ -665,10 +668,7 @@ class Interpreter:
             self.exec_block(n.orelse, env)
 
     def exec_RepeatN(self, n, env):
-        count = self.eval(n.count, env)
-        if not isinstance(count, (int, float)) or isinstance(count, bool):
-            raise VidyaxError("'rpt' needs a number")
-        for _ in range(int(count)):
+        for _ in _rt(RT["_rpt"], None, self.eval(n.count, env)):
             try:
                 self.exec_block(n.body, env)
             except BreakSignal:
@@ -677,9 +677,7 @@ class Interpreter:
                 continue
 
     def exec_ForEach(self, n, env):
-        it = self.eval(n.iterable, env)
-        if not isinstance(it, (list, str)):
-            raise VidyaxError("'for ... in' needs a list or text")
+        it = _rt(RT["_iter"], None, self.eval(n.iterable, env))
         for item in it:
             env.set(n.var, item)
             try:
@@ -710,14 +708,12 @@ class Interpreter:
             self.exec_block(n.catch_body, env)
         except Exception as e:
             if n.err_var:
-                env.set(n.err_var, str(e))
+                env.set(n.err_var, RT["_errtext"](e))
             self.exec_block(n.catch_body, env)
 
     def exec_Import(self, n, env):
         if n.name == "ai":
-            mod = AIModule()
-            self.modules["ai"] = mod
-            env.set("ai", mod)
+            env.set("ai", RT["_AI"]())
         elif n.name in ("web", "database"):
             raise VidyaxError(f"module '{n.name}' is not supported yet (roadmap)")
         else:
@@ -766,17 +762,10 @@ class Interpreter:
             l = self.eval(n.l, env)
             return l if vidyax_truthy(l) else self.eval(n.r, env)
         l = self.eval(n.l, env); r = self.eval(n.r, env)
-        if n.op == "+":
-            if isinstance(l, str) or isinstance(r, str):
-                return vidyax_str(l) + vidyax_str(r)
-            if isinstance(l, list) and isinstance(r, list):
-                return l + r
-            return l + r
+        if n.op == "+": return _rt(RT["_add"], n.line, l, r)
         if n.op == "-": return l - r
         if n.op == "*": return l * r
-        if n.op == "/":
-            if r == 0: raise VidyaxError("cannot divide by 0", n.line)
-            return l / r
+        if n.op == "/": return _rt(RT["_div"], n.line, l, r)
         if n.op == "%": return l % r
         if n.op == "==": return l == r
         if n.op == "!=": return l != r
@@ -788,28 +777,20 @@ class Interpreter:
 
     def eval_Member(self, n, env):
         obj = self.eval(n.obj, env)
-        if isinstance(obj, AIModule):
-            attr = getattr(obj, n.name, None)
-            if callable(attr):
-                return BoundMethod(attr)
-            raise VidyaxError(f"'ai' has no member '{n.name}'", n.line)
-        raise VidyaxError(f"object has no member '{n.name}'", n.line)
+        return _rt(RT["_member"], n.line, obj, n.name)
 
     def eval_Index(self, n, env):
         obj = self.eval(n.obj, env)
         idx = self.eval(n.idx, env)
-        try:
-            return obj[int(idx)]
-        except Exception:
-            raise VidyaxError("index out of range", n.line)
+        return _rt(RT["_index"], n.line, obj, idx)
 
     def eval_Call(self, n, env):
         callee = self.eval(n.callee, env)
         args = [self.eval(a, env) for a in n.args]
-        if isinstance(callee, BoundMethod):
-            return callee(*args)
         if isinstance(callee, Function):
             return self.call_function(callee, args, n.line)
+        if callable(callee):  # built-ins and ai methods (shared runtime)
+            return _rt(callee, n.line, *args)
         raise VidyaxError("this is not a function", n.line)
 
     def call_function(self, fn, args, line):
@@ -817,7 +798,11 @@ class Interpreter:
             raise VidyaxError(
                 f"function '{fn.decl.name}' needs {len(fn.decl.params)} args, "
                 f"got {len(args)}", line)
-        local = Environment(fn.closure)
+        declared = getattr(fn.decl, "_locals", None)
+        if declared is None:
+            declared = assigned_names(fn.decl.body) - set(fn.decl.params)
+            fn.decl._locals = declared
+        local = Environment(fn.closure, declared=declared)
         for p, a in zip(fn.decl.params, args):
             local.set(p, a)
         try:
@@ -901,35 +886,105 @@ def _index(o, i):
     try: return o[int(i)]
     except Exception: raise _VidyaxRuntime("index out of range")
 
+def _rpt(n):
+    if isinstance(n, bool) or not isinstance(n, (int, float)):
+        raise _VidyaxRuntime("'rpt' needs a number")
+    return range(int(n))
+
+def _iter(x):
+    if not isinstance(x, (list, str)):
+        raise _VidyaxRuntime("'for ... in' needs a list or text")
+    return x
+
+def _call(f, *a):
+    # Shared call gate: user-defined functions carry _vxargs/_vxname
+    # (set by the transpiler) so arity errors read the same as the walker's.
+    if not callable(f):
+        raise _VidyaxRuntime("this is not a function")
+    need = getattr(f, "_vxargs", None)
+    if need is not None and len(a) != need:
+        raise _VidyaxRuntime("function '%s' needs %s args, got %s"
+                             % (getattr(f, "_vxname", "?"), need, len(a)))
+    return f(*a)
+
+# --- AI module: THE single implementation, used by BOTH engines ---
+_AI_PROVIDERS = {
+    "groq":   ("https://api.groq.com/openai/v1/chat/completions", "GROQ_API_KEY"),
+    "openai": ("https://api.openai.com/v1/chat/completions", "OPENAI_API_KEY"),
+}
+
 class _AI:
     def __init__(self):
-        self.model = _os.environ.get("VIDYAX_MODEL", "llama-3.3-70b-versatile")
+        self.provider = "groq"
+        self.model = "llama-3.1-8b-instant"
         self.system_prompt = None
-    def open(self, model):
-        self.model = str(model); return self
+        env = _os.environ.get("VIDYAX_MODEL")
+        if env:
+            self.open(env)
+    def open(self, spec):
+        # "model"            -> keep provider, switch model
+        # "provider:model"   -> switch both (e.g. "openai:gpt-4o-mini")
+        spec = str(spec)
+        if ":" in spec:
+            p, m = spec.split(":", 1)
+            self.provider = p.strip().lower()
+            if m.strip():
+                self.model = m.strip()
+        else:
+            self.model = spec.strip()
+        if self.provider not in _AI_PROVIDERS:
+            raise _VidyaxRuntime(
+                "unknown AI provider '%s' (available: %s)"
+                % (self.provider, ", ".join(sorted(_AI_PROVIDERS))))
+        return self
     def system(self, text):
         self.system_prompt = str(text)
+        return self
     def ask(self, prompt):
-        key = _os.environ.get("GROQ_API_KEY")
+        url, keyname = _AI_PROVIDERS[self.provider]
+        key = _os.environ.get(keyname)
         if not key:
-            raise _VidyaxRuntime("GROQ_API_KEY is not set (ai.ask needs internet & an API key)")
+            raise _VidyaxRuntime(
+                keyname + " is not set. Run: export " + keyname + "=...  "
+                "(ai.ask needs internet & an API key)")
         messages = []
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})
         messages.append({"role": "user", "content": str(prompt)})
         body = _json.dumps({"model": self.model,
             "messages": messages}).encode()
-        req = _ureq.Request("https://api.groq.com/openai/v1/chat/completions",
+        req = _ureq.Request(url,
             data=body, headers={"Authorization": "Bearer " + key,
-                                "Content-Type": "application/json","User-Agent": "vidyax/1.0"})
+                                "Content-Type": "application/json",
+                                "User-Agent": "vidyax/1.1"})
         try:
             with _ureq.urlopen(req, timeout=60) as r:
                 data = _json.loads(r.read().decode())
-            return data["choices"][0]["message"]["content"]
         except _uerr.HTTPError as e:
-            raise _VidyaxRuntime("AI failed (%s)" % e.code)
+            raise _VidyaxRuntime("AI failed (HTTP %s): %s"
+                % (e.code, e.read().decode("utf-8", "replace")[:200]))
         except Exception as e:
             raise _VidyaxRuntime("AI failed: %s" % e)
+        try:
+            return data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            detail = ""
+            if isinstance(data, dict) and isinstance(data.get("error"), dict):
+                detail = ": " + str(data["error"].get("message", ""))[:200]
+            raise _VidyaxRuntime("AI gave an unexpected reply" + detail)
+
+def _member(o, name):
+    # Member-access policy, shared by both engines:
+    # only Vidyax runtime objects (the ai module) expose members, and
+    # underscore-prefixed Python internals are never reachable.
+    if name.startswith("_"):
+        raise _VidyaxRuntime("member '%s' is private" % name)
+    if isinstance(o, _AI):
+        try:
+            return getattr(o, name)
+        except AttributeError:
+            raise _VidyaxRuntime("'ai' has no member '%s'" % name)
+    raise _VidyaxRuntime("object has no member '%s'" % name)
 
 # --- built-in functions ---
 def _b_len(x):
@@ -974,24 +1029,31 @@ def _b_type(x):
     return "object"
 
 def _b_get(url):
-    # Simple HTTP GET. Returns the response text, or an error string
-    # (so the user's program does not crash on a bad connection).
+    # Simple HTTP GET. Raises a Vidyax error on failure so the user can
+    # handle it with try/catch, like every other error in the language.
     try:
-        req = _ureq.Request(str(url), headers={"User-Agent": "Vidyax/0.1"})
+        req = _ureq.Request(str(url), headers={"User-Agent": "vidyax/1.1"})
         with _ureq.urlopen(req, timeout=15) as r:
             return r.read().decode("utf-8", "replace")
     except _uerr.HTTPError as e:
-        return "ERROR_HTTP: %s %s" % (e.code, e.reason)
+        raise _VidyaxRuntime("get() failed: HTTP %s %s" % (e.code, e.reason))
     except _uerr.URLError as e:
-        return "ERROR_CONNECTION: %s" % e.reason
+        raise _VidyaxRuntime("get() failed: cannot connect (%s)" % e.reason)
     except Exception as e:
-        return "ERROR: %s" % e
+        raise _VidyaxRuntime("get() failed: %s" % e)
 
 def _errtext(e):
-    # Normalize Python error text into Vidyax-style wording (for try/catch).
+    # Normalize Python error text into Vidyax-style wording. Used by BOTH
+    # engines (try/catch + top-level reporting), so messages always match.
     m = str(e)
+    if isinstance(e, UnboundLocalError):
+        name = m.split("'")[1] if m.count("'") >= 2 else "?"
+        return ("variable '%s' is assigned in this function "
+                "but used before it has a value" % name)
     if isinstance(e, NameError):
-        return m.replace("name '", "variable '", 1)
+        if m.count("'") >= 2:
+            return "variable '%s' is not defined" % m.split("'")[1]
+        return m
     return m
 # --- end runtime ---
 '''
@@ -1020,6 +1082,20 @@ BUILTINS = {
     "get": _RT_NS["_b_get"],
 }
 BUILTIN_NAMES = set(BUILTINS)
+
+# The tree-walker calls THESE — the same helpers the transpiled code calls.
+RT = _RT_NS
+RTError = _RT_NS["_VidyaxRuntime"]
+vidyax_str = _RT_NS["_vstr"]
+
+
+def _rt(fn, line, *args):
+    """Call a shared runtime helper from the walker; convert its errors
+    into VidyaxError so they carry a .vx line number."""
+    try:
+        return fn(*args)
+    except RTError as e:
+        raise VidyaxError(str(e), line)
 
 
 class Transpiler:
@@ -1057,15 +1133,18 @@ class Transpiler:
             self._tail_else(n.orelse, indent)
         elif t == "RepeatN":
             v = f"_i{self.rpt_counter}"; self.rpt_counter += 1
-            self.emit(indent, f"for {v} in range(int({self.expr(n.count)})):")
+            self.emit(indent, f"for {v} in _rpt({self.expr(n.count)}):")
             self.block(n.body, indent + 1)
         elif t == "ForEach":
-            self.emit(indent, f"for {_pyname(n.var)} in {self.expr(n.iterable)}:")
+            self.emit(indent, f"for {_pyname(n.var)} in _iter({self.expr(n.iterable)}):")
             self.block(n.body, indent + 1)
         elif t == "FuncDef":
             params = ", ".join(_pyname(p) for p in n.params)
-            self.emit(indent, f"def {_pyname(n.name)}({params}):")
+            py = _pyname(n.name)
+            self.emit(indent, f"def {py}({params}):")
             self.block(n.body, indent + 1)
+            self.emit(indent, f"{py}._vxargs = {len(n.params)}")
+            self.emit(indent, f"{py}._vxname = {n.name!r}")
         elif t == "Return":
             self.emit(indent, "return" if n.value is None else f"return {self.expr(n.value)}")
         elif t == "Break":
@@ -1138,9 +1217,10 @@ class Transpiler:
             callee = n.callee
             if type(callee).__name__ == "Var" and callee.name in BUILTIN_NAMES:
                 return f"_b_{callee.name}({args})"
-            return f"{self.expr(callee)}({args})"
+            joined = (", " + args) if args else ""
+            return f"_call({self.expr(callee)}{joined})"
         if t == "Member":
-            return f"{self.expr(n.obj)}.{n.name}"
+            return f"_member({self.expr(n.obj)}, {n.name!r})"
         if t == "Index":
             return f"_index({self.expr(n.obj)}, {self.expr(n.idx)})"
         raise VidyaxError(f"cannot compile expression {t}")
@@ -1170,21 +1250,31 @@ def compile_to_python(source, standalone=True):
     return "\n".join(parts) + "\n"
 
 
-def run_fast(source):
-    """Transpile to Python and execute in-memory (the fast path)."""
+def run_fast_text(source):
+    """Transpile to Python and execute in-memory (the fast path).
+    Raises VidyaxError on failure — used by the CLI and by the
+    differential tests, which run every case through BOTH engines."""
     py = compile_to_python(source, standalone=False)
     ns = {"__name__": "_vax_main"}
     exec(compile(py, "<vidyax>", "exec"), ns)
     try:
         ns["_main"]()
+    except VidyaxError:
+        raise
     except Exception as e:
-        # _VidyaxRuntime defined inside ns
+        # _VidyaxRuntime is defined inside ns (fresh class per program)
         if type(e).__name__ == "_VidyaxRuntime":
-            print("[Vidyax] " + str(e)); sys.exit(1)
-        # catch-all: dynamic runtime errors the static type_check() pass
-        # couldn't see (values only known at runtime) -- report them
-        # Vidyax-style instead of a raw Python traceback.
-        print("[Vidyax] " + ns["_errtext"](e)); sys.exit(1)
+            raise VidyaxError(str(e))
+        # dynamic runtime errors the static type_check() pass couldn't
+        # see — report them Vidyax-style instead of a raw traceback
+        raise VidyaxError(ns["_errtext"](e))
+
+
+def run_fast(source):
+    try:
+        run_fast_text(source)
+    except VidyaxError as e:
+        print(e.show()); sys.exit(1)
 
 
 def build_file(path):
@@ -1209,11 +1299,7 @@ def run_file(path):
         sys.exit(1)
     with open(path, encoding="utf-8") as f:
         source = f.read()
-    try:
-        run_fast(source)
-    except VidyaxError as e:
-        print(e.show())
-        sys.exit(1)
+    run_fast(source)
 
 
 def walk_file(path):
@@ -1234,7 +1320,7 @@ def walk_file(path):
     except Exception as e:
         # catch-all: dynamic runtime errors the static type_check() pass
         # couldn't see (values only known at runtime).
-        print("[Vidyax] " + friendly_error(e))
+        print("[Vidyax] " + RT["_errtext"](e))
         sys.exit(1)
 
 
@@ -1270,14 +1356,23 @@ def check_file(path):
 
 
 def run_text(source):
+    """Tree-walk a program. Raises VidyaxError on failure — the walker
+    twin of run_fast_text, used by the REPL and the differential tests."""
     tokens = lex(source)
     ast = Parser(tokens).parse()
-    Interpreter().run(ast)
+    type_check(ast)
+    try:
+        Interpreter().run(ast)
+    except VidyaxError:
+        raise
+    except Exception as e:
+        raise VidyaxError(RT["_errtext"](e))
 
 
 def _repl_exec(interp, src):
     try:
         prog = Parser(lex(src)).parse()
+        type_check(prog)
         # echo the value of a single bare expression, like a calculator
         if len(prog.body) == 1 and type(prog.body[0]).__name__ == "ExprStmt":
             val = interp.eval(prog.body[0].expr, interp.global_env)
@@ -1288,14 +1383,12 @@ def _repl_exec(interp, src):
                 interp.exec(st, interp.global_env)
     except VidyaxError as e:
         print(e.show())
-    except (BreakSignal, ContinueSignal, ReturnSignal):
-        print("[Vidyax] break/continue/return only work inside loops/functions")
     except Exception as e:
-        print("[Vidyax] " + str(e))
+        print("[Vidyax] " + RT["_errtext"](e))
 
 
 def repl():
-    print("Vidyax v1.0 REPL")
+    print(f"Vidyax v{VERSION} REPL")
     print("  one-liners:  func sq(n): return n * n   then   sq(12)")
     print("  blocks:      type lines, end with a blank line.  Ctrl-D to exit")
     interp = Interpreter()
@@ -1328,7 +1421,7 @@ def main():
         return
     if args[0] in ("-h", "--help", "help"):
         print(
-            "Vidyax v1.0\n"
+            f"Vidyax v{VERSION}\n"
             "  vidyax                     start the interactive REPL\n"
             "  vidyax <file.vx>           run a file (fast: compiles to Python)\n"
             "  vidyax run <file.vx>       run a file\n"

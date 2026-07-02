@@ -1,4 +1,4 @@
-# Vidyax — v1.3se 
+# Vidyax — v1.1
 
 > Named after the Sanskrit word *vidyā* (विद्या) — "knowledge".
 
@@ -42,7 +42,7 @@ the syntax tree. On a recursive `fib(27)` + a 300k-iteration loop:
 `vidyax build file.vx` emits a clean, portable `file.py` that runs with plain
 `python3` anywhere — no Vidyax needed on the target machine.
 
-## What works in v0.1
+## What works in v1.1
 
 | Feature      | Example                              |
 |--------------|--------------------------------------|
@@ -59,7 +59,7 @@ the syntax tree. On a recursive `fib(27)` + a 300k-iteration loop:
 | Types        | number, text, true/false, null, list [...] |
 | Built-in AI  | use ai -> ai.ask "..."               |
 | Built-ins    | len, range, text, num, upper, lower, split, join, push, abs, sum, min, max, type, get |
-| HTTP         | get(url) -> fetches a URL, returns text (or an ERROR_ string on failure) |
+| HTTP         | get(url) -> fetches a URL, returns text (raises a catchable error on failure — use try/catch) |
 | REPL         | run `vax` with no file to type code live |
 
 ## AI Features (BYOK — Bring Your Own Key)
@@ -79,37 +79,54 @@ Vidyax uses a **BYOK** model: you use your own API key. Vidyax never stores or u
 ### 2. Set Your API Key
 
 **Temporary (lost when the terminal closes):**
-\`\`\`bash
+```bash
 export GROQ_API_KEY=gsk_xxxxxxxx
-\`\`\`
+```
 
 **Permanent (recommended):**
-\`\`\`bash
+```bash
 echo 'export GROQ_API_KEY=gsk_xxxxxxxx' >> ~/.bashrc
 source ~/.bashrc
-\`\`\`
+```
 
 ### 3. Use It in Code
 
 **Groq (default):**
-\`\`\`
+```
 use ai
 ai.open "llama-3.1-8b-instant"
 answer: ai.ask "List 3 benefits of exercise"
 print answer
-\`\`\`
+```
 
 **Choose another provider with a `provider:model` prefix:**
-\`\`\`
+```
 ai.open "groq:llama-3.1-8b-instant"
 ai.open "openai:gpt-4o-mini"
-\`\`\`
+```
 Without a prefix, Vidyax defaults to Groq.
 
 > **Note:** Each provider needs its own environment key — `GROQ_API_KEY` for Groq, `OPENAI_API_KEY` for OpenAI. Groq model list: https://console.groq.com/docs/models. If you get a 403 error, the model is usually not available for your account; try `llama-3.1-8b-instant`.
 
+## What changed in v1.1
 
-```
+One runtime, two engines. The tree-walker (`vidyax walk`) and the transpiler
+(`vidyax run`) now share the exact same runtime helpers, so programs behave
+identically on both — enforced by differential tests (`vidyax test` runs
+every case on both engines and requires the outputs to match).
+
+- `ai` module unified: `provider:model` routing now works on the default
+  `run` path too, same default model everywhere (`llama-3.1-8b-instant`).
+- **Breaking:** `get(url)` now raises a catchable error on failure instead
+  of returning an `"ERROR_..."` string. Wrap it in `try/catch`.
+- Scoping rule made explicit: a variable assigned anywhere inside a function
+  is local to that function. Reading it before it has a value is a clear
+  error (same message on both engines) instead of a crash.
+- Built-in names (`len`, `get`, ...) are reserved — shadowing them is a
+  parse error.
+- `break`/`continue`/`return` outside a loop/function fail at parse time.
+- Python internals (`__class__`, anything `_`-prefixed) are no longer
+  reachable from transpiled programs.
 
 ## Roadmap (NOT runnable yet — stubbed on purpose)
 
@@ -120,7 +137,7 @@ agent, go, use web, use database, vidyax fmt, vax install.
 ```
 vidyax.py         # interpreter + transpiler + CLI (single file)
 install.sh        # installs the `vax` command
-tests.py          # built-in tests
+tests.py          # differential tests (every case runs on BOTH engines)
 contoh/
   main.vx         # full demo
   interactive.vx  # input + recursion
