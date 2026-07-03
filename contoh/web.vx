@@ -1,13 +1,14 @@
 # Ambil data dari internet pakai get(url)
-# Mulai sederhana: GET request, balikin teks respons.
+# Kalau gagal (tidak ada koneksi, URL salah, server error),
+# get() melempar error yang bisa ditangkap pakai try/catch —
+# sama seperti error lain di Vidyax.
 
-print "Mengambil data..."
-hasil: get("https://api.github.com/zen")
-
-# get() tidak pernah bikin program crash:
-# kalau gagal, dia balikin teks yang diawali "ERROR_"
-print hasil
-
-# contoh dipakai dalam logika
-data: get("https://example.com")
-print "Panjang halaman: " + len(data) + " karakter"
+try:
+    print "Mengambil data..."
+    hasil: get("https://api.github.com/zen")
+    print hasil
+    data: get("https://example.com")
+    print "Panjang halaman: " + len(data) + " karakter"
+catch e:
+    print "Gagal ambil data: " + e
+    print "Program tetap lanjut dengan aman."
