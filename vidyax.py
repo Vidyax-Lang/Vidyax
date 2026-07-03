@@ -19,7 +19,7 @@ import json
 import urllib.request
 import urllib.error
 
-VERSION = "1.1"
+VERSION = "1.2"
 
 # =====================================================================
 # 1. TOKEN & LEXER
