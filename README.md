@@ -1,5 +1,9 @@
 # Vidyax — v1.1
 
+[![Docs](https://img.shields.io/badge/docs-online-8A2BE2?style=for-the-badge)](https://daffa2555.github.io/Vidyax/)
+
+**📖 Read the documentation: [daffa2555.github.io/Vidyax](https://daffa2555.github.io/Vidyax/)**
+
 > Named after the Sanskrit word *vidyā* (विद्या) — "knowledge".
 
 > "Code as simple as writing instructions."
