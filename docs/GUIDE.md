@@ -1,115 +1,118 @@
-# Panduan Vidyax
+# Vidyax Guide
 
-> Belajar Vidyax dari nol lewat contoh. Kalau butuh detail lengkap tiap
-> fitur, lihat [REFERENCE.md](./REFERENCE.md).
+> Learn Vidyax from scratch through examples. For the complete details of
+> every feature, see [REFERENCE.md](./REFERENCE.md).
 
-Vidyax (`.vx`) adalah bahasa pemrograman yang dibuat supaya nulis kode
-terasa seperti nulis instruksi biasa. Filosofinya: *"Code as simple as
+Vidyax (`.vx`) is a programming language built so that writing code feels
+like writing plain instructions. Its philosophy: *"Code as simple as
 writing instructions."*
 
 ---
 
-## 0. Menjalankan program
+## 0. Running a program
 
-Simpan kode ke file `.vx`, lalu:
-
-```bash
-vidyax run halo.vx      # cara utama menjalankan program
-```
-
-Kalau belum pasang perintah `vidyax`, jalankan langsung lewat Python:
+Save your code to a `.vx` file, then:
 
 ```bash
-python3 vidyax.py run halo.vx
+vidyax run hello.vx      # the main way to run a program
+```
+
+If you haven't installed the `vidyax` command yet, run it directly
+through Python:
+
+```bash
+python3 vidyax.py run hello.vx
 ```
 
 ---
 
-## 1. Halo dunia
+## 1. Hello world
 
 ```vidyax
-print "Halo, dunia!"
+print "Hello, world!"
 ```
 
-`print` menampilkan sesuatu ke layar. Teks ditulis di antara tanda kutip dua.
+`print` displays something on the screen. Text is written between double
+quotes.
 
 ---
 
-## 2. Variabel
+## 2. Variables
 
-Tanda titik dua (`:`) dipakai untuk memberi nilai ke variabel — bukan
-tanda sama dengan.
+A colon (`:`) is used to assign a value to a variable — not an equals
+sign.
 
 ```vidyax
-nama: "Daf"
-umur: 21
-print "Halo " + nama
+name: "Daf"
+age: 21
+print "Hello " + name
 ```
 
-Nama built-in (seperti `len`, `get`, `print`) tidak boleh dipakai jadi
-nama variabel — Vidyax akan menolaknya biar tidak bikin bingung.
+Built-in names (like `len`, `get`, `print`) cannot be used as variable
+names — Vidyax rejects that to avoid confusion.
 
 ---
 
-## 3. Angka dan teks
+## 3. Numbers and text
 
 ```vidyax
-print 10 + 5        # 15
-print 10 / 4        # 2.5
-print "a" + "b"     # ab
-print "umur: " + 21 # umur: 21  (angka otomatis jadi teks saat digabung)
+print 10 + 5         # 15
+print 10 / 4         # 2.5
+print "a" + "b"      # ab
+print "age: " + 21   # age: 21  (numbers become text when joined)
 ```
 
-`+` menyambung teks **dan** menjumlah angka. Kalau salah satu sisi teks,
-sisi lainnya ikut jadi teks.
+`+` concatenates text **and** adds numbers. If one side is text, the
+other side becomes text too.
 
 ---
 
-## 4. Percabangan (if / elif / else)
+## 4. Conditionals (if / elif / else)
 
-Blok ditandai dengan indentasi (spasi menjorok), mirip Python.
+Blocks are marked with indentation, similar to Python.
 
 ```vidyax
-nilai: 75
+score: 75
 
-if nilai >= 90:
+if score >= 90:
     print "A"
-elif nilai >= 70:
+elif score >= 70:
     print "B"
 else:
     print "C"
 ```
 
-Operator logika: `and`, `or`, `not`.
+Logical operators: `and`, `or`, `not`.
 
 ```vidyax
-if umur >= 17 and not false:
-    print "boleh"
+if age >= 17 and not false:
+    print "allowed"
 ```
 
 ---
 
-## 5. Perulangan
+## 5. Loops
 
-**`rpt N`** — ulang sebanyak N kali:
+**`rpt N`** — repeat N times:
 
 ```vidyax
 rpt 3:
-    print "ulang"
+    print "repeat"
 ```
 
-**`for x in ...`** — jalan di tiap isi list atau tiap huruf teks:
+**`for x in ...`** — iterate over each item in a list or each character
+in text:
 
 ```vidyax
-buah: ["apel", "mangga", "jeruk"]
-for b in buah:
-    print b
+fruits: ["apple", "mango", "orange"]
+for f in fruits:
+    print f
 
-for huruf in "abc":
-    print huruf
+for letter in "abc":
+    print letter
 ```
 
-**`break`** berhenti dari loop, **`continue`** lompat ke putaran berikutnya:
+**`break`** exits the loop, **`continue`** jumps to the next iteration:
 
 ```vidyax
 for i in [1, 2, 3, 4, 5]:
@@ -118,139 +121,140 @@ for i in [1, 2, 3, 4, 5]:
     if i == 2:
         continue
     print i
-# keluar: 1, lalu 3
+# output: 1, then 3
 ```
 
 ---
 
-## 6. Fungsi
+## 6. Functions
 
 ```vidyax
-func tambah(a, b):
+func add(a, b):
     return a + b
 
-print tambah(10, 20)   # 30
+print add(10, 20)   # 30
 ```
 
-Fungsi bisa memanggil dirinya sendiri (rekursif):
+Functions can call themselves (recursion):
 
 ```vidyax
-func faktorial(n):
+func factorial(n):
     if n <= 1:
         return 1
-    return n * faktorial(n - 1)
+    return n * factorial(n - 1)
 
-print faktorial(5)   # 120
+print factorial(5)   # 120
 ```
 
-### Aturan variabel di dalam fungsi (penting)
+### Variable rules inside functions (important)
 
-Variabel yang kamu **beri nilai di dalam fungsi bersifat lokal** — cuma
-hidup di fungsi itu, tidak bocor ke luar. Ini sama seperti kebanyakan
-bahasa lain.
+A variable you **assign inside a function is local** — it only lives in
+that function and does not leak outside. This is the same as most other
+languages.
 
 ```vidyax
 x: 1
 
-func ubah():
-    x: 5       # ini x LOKAL milik fungsi, bukan x di luar
+func change():
+    x: 5       # this is a LOCAL x, not the outer x
     return x
 
-print ubah()   # 5
-print x        # 1  (x di luar tidak berubah)
+print change()   # 5
+print x          # 1  (the outer x is unchanged)
 ```
 
-Kamu tetap bisa **membaca** variabel luar selama tidak menimpanya:
+You can still **read** an outer variable as long as you don't overwrite
+it:
 
 ```vidyax
-faktor: 10
+factor: 10
 
-func kali(n):
-    return n * faktor   # membaca 'faktor' dari luar — boleh
+func multiply(n):
+    return n * factor   # reading 'factor' from outside — allowed
 
-print kali(3)   # 30
+print multiply(3)   # 30
 ```
 
-Kalau butuh mengubah nilai untuk dipakai di luar, kembalikan lewat
-`return` — jangan andalkan variabel global.
+If you need to change a value for use outside, return it with `return` —
+don't rely on globals.
 
 ---
 
-## 7. Menangani error (try / catch)
+## 7. Handling errors (try / catch)
 
-Kalau ada operasi yang bisa gagal, bungkus dengan `try` / `catch` supaya
-program tidak berhenti mendadak.
+If an operation might fail, wrap it in `try` / `catch` so the program
+doesn't stop abruptly.
 
 ```vidyax
 try:
-    hasil: 10 / 0
+    result: 10 / 0
 catch e:
-    print "ketangkap: " + e   # ketangkap: cannot divide by 0
+    print "caught: " + e   # caught: cannot divide by 0
 ```
 
-`catch` boleh tanpa variabel kalau tidak butuh pesannya:
+`catch` can omit the variable if you don't need the message:
 
 ```vidyax
 try:
-    print barangGaib
+    print ghostThing
 catch:
-    print "ada yang salah, tapi program lanjut"
+    print "something went wrong, but the program continues"
 ```
 
 ---
 
-## 8. Input dari pengguna
+## 8. Input from the user
 
-`ask` membaca satu baris ketikan dari pengguna:
+`ask` reads one line of input from the user:
 
 ```vidyax
-nama: ask "Siapa namamu?"
-print "Halo, " + nama
+name: ask "What is your name?"
+print "Hello, " + name
 ```
 
 ---
 
-## 9. Ambil data dari internet: `get`
+## 9. Fetching data from the internet: `get`
 
-`get(url)` mengambil isi sebuah URL sebagai teks. Kalau gagal (tidak ada
-koneksi, URL salah, server error), `get` **melempar error yang bisa
-ditangkap** — jadi selalu bungkus dengan `try` / `catch`.
+`get(url)` fetches the contents of a URL as text. If it fails (no
+connection, wrong URL, server error), `get` **raises a catchable
+error** — so always wrap it in `try` / `catch`.
 
 ```vidyax
 try:
-    kutipan: get("https://api.github.com/zen")
-    print kutipan
+    quote: get("https://api.github.com/zen")
+    print quote
 catch e:
-    print "gagal ambil data: " + e
+    print "failed to fetch: " + e
 ```
 
-> Perubahan di v1.1: dulu `get` mengembalikan teks berawalan `"ERROR_..."`
-> saat gagal. Sekarang ia melempar error seperti operasi lain. Program
-> lama yang mengandalkan cek `"ERROR_"` perlu diganti ke `try`/`catch`.
+> Change in v1.1: `get` used to return text starting with `"ERROR_..."`
+> on failure. It now raises an error like any other operation. Old
+> programs that checked for `"ERROR_"` need to switch to `try`/`catch`.
 
 ---
 
-## 10. AI bawaan
+## 10. Built-in AI
 
-Vidyax punya modul `ai` bawaan. Aktifkan dengan `use ai`, lalu bertanya
-dengan `ai.ask`.
+Vidyax has a built-in `ai` module. Enable it with `use ai`, then ask
+questions with `ai.ask`.
 
 ```vidyax
 use ai
-ai.system "jawab singkat dan santai"
-jawab: ai.ask "Apa itu komputer?"
-print jawab
+ai.system "answer briefly and casually"
+answer: ai.ask "What is a computer?"
+print answer
 ```
 
-Model default: `llama-3.1-8b-instant` (lewat Groq). Kamu bisa ganti model
-atau penyedia:
+Default model: `llama-3.1-8b-instant` (via Groq). You can change the
+model or provider:
 
 ```vidyax
-ai.open "llama-3.1-8b-instant"       # ganti model (tetap Groq)
-ai.open "openai:gpt-4o-mini"         # ganti penyedia + model
+ai.open "llama-3.1-8b-instant"       # change model (still Groq)
+ai.open "openai:gpt-4o-mini"         # change provider + model
 ```
 
-Tiap penyedia butuh API key sendiri di environment:
+Each provider needs its own API key in the environment:
 
 ```bash
 export GROQ_API_KEY=gsk_xxxxx
@@ -259,12 +263,13 @@ export OPENAI_API_KEY=sk_xxxxx
 
 ---
 
-## Selanjutnya
+## Next
 
-- [REFERENCE.md](./REFERENCE.md) — daftar lengkap semua sintaks, fungsi
-  built-in, perintah CLI, dan pesan error.
-- Folder `contoh/` di repo — program contoh yang bisa langsung dijalankan.
+- [REFERENCE.md](./REFERENCE.md) — the complete list of all syntax,
+  built-in functions, CLI commands, and error messages.
+- The `contoh/` folder in the repo — example programs you can run
+  directly.
 
-Kalau kamu tulis program yang sama, `vidyax run` dan `vidyax walk`
-harus memberi hasil identik — itu dijamin oleh test bawaan
+If you write the same program, `vidyax run` and `vidyax walk` must
+produce identical results — this is guaranteed by the built-in tests
 (`vidyax test`).
