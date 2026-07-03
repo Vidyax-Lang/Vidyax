@@ -1,0 +1,59 @@
+site_name: Vidyax
+site_description: A programming language as simple as writing instructions — with its own interpreter, compiler, and virtual machine.
+site_author: NaDev (Daf)
+# Ganti kalau username/repo GitHub kamu berbeda:
+site_url: https://daffa2555.github.io/Vidyax/
+repo_url: https://github.com/daffa2555/Vidyax
+repo_name: daffa2555/Vidyax
+
+theme:
+  name: material
+  language: en
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+  features:
+    - navigation.instant
+    - navigation.top
+    - navigation.tracking
+    - navigation.sections
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Guide: GUIDE.md
+  - Reference: REFERENCE.md
+  - VVM Specification: VVM_SPEC.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/daffa2555

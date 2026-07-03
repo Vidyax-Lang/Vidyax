@@ -1,165 +1,170 @@
-# Referensi Bahasa Vidyax (v1.1)
+# Vidyax Language Reference (v1.1)
 
-Dokumen ini mendaftar seluruh sintaks, tipe, fungsi built-in, perintah
-CLI, dan pesan error Vidyax. Untuk belajar dari nol, lihat
+This document lists all of Vidyax's syntax, types, built-in functions,
+CLI commands, and error messages. To learn from scratch, see
 [GUIDE.md](./GUIDE.md).
 
 ---
 
-## Model eksekusi
+## Execution model
 
-Vidyax punya **dua mesin eksekusi yang berbagi satu runtime**:
+Vidyax has **two execution engines that share one runtime**:
 
-| Perintah      | Mesin                | Keterangan |
-|---------------|----------------------|------------|
-| `vidyax run`  | transpiler → Python  | jalur utama; menerjemahkan `.vx` ke Python lalu menjalankannya |
-| `vidyax walk` | tree-walker          | menafsirkan pohon sintaks langsung; berguna untuk debug/pembanding |
+| Command       | Engine               | Notes |
+|---------------|----------------------|-------|
+| `vidyax run`  | transpiler → Python  | the main path; translates `.vx` to Python, then runs it |
+| `vidyax walk` | tree-walker          | interprets the syntax tree directly; useful for debugging/comparison |
 
-Keduanya memanggil helper runtime yang sama, jadi hasilnya identik secara
-konstruksi. Kesamaan ini diuji otomatis: `vidyax test` menjalankan tiap
-kasus di **kedua** mesin dan mengharuskan outputnya sama persis.
+Both call the same runtime helpers, so their results are identical by
+construction. This is tested automatically: `vidyax test` runs every case
+on **both** engines and requires the output to match exactly.
+
+There is also a third engine — the **C Virtual Machine** (see
+[VVM_SPEC.md](./VVM_SPEC.md)) — validated against these two with the same
+test suite.
 
 ---
 
-## Sintaks dasar
+## Basic syntax
 
-- Satu pernyataan per baris. Tidak ada titik koma.
-- Blok ditandai **indentasi** (menjorok dengan spasi), seperti Python.
-- Komentar diawali `#` sampai akhir baris.
+- One statement per line. No semicolons.
+- Blocks are marked by **indentation** (spaces), like Python.
+- Comments start with `#` and run to the end of the line.
 
 ```vidyax
-# ini komentar
-print "halo"
+# this is a comment
+print "hello"
 ```
 
 ---
 
-## Tipe nilai
+## Value types
 
-| Tipe    | Contoh literal          | Catatan |
-|---------|-------------------------|---------|
-| angka   | `42`, `3.14`, `-7`      | integer & desimal dipakai bersama |
-| teks    | `"halo"`                | kutip dua |
-| boolean | `true`, `false`         |         |
-| kosong  | `null`                  | ketiadaan nilai |
-| list    | `[1, 2, 3]`, `["a","b"]`| boleh campur tipe |
+| Type    | Example literal         | Notes |
+|---------|-------------------------|-------|
+| number  | `42`, `3.14`, `-7`      | integers & decimals used together |
+| text    | `"hello"`               | double quotes |
+| boolean | `true`, `false`         |       |
+| empty   | `null`                  | absence of a value |
+| list    | `[1, 2, 3]`, `["a","b"]`| may mix types |
 
-`type(x)` mengembalikan nama tipe sebagai teks: `"number"`, `"text"`,
-`"bool"`, `"null"`, atau `"list"`.
+`type(x)` returns the type name as text: `"number"`, `"text"`, `"bool"`,
+`"null"`, or `"list"`.
 
 ---
 
-## Variabel
+## Variables
 
 ```vidyax
-nama: nilai
+name: value
 ```
 
-- Assignment memakai `:` (bukan `=`).
-- Nama fungsi built-in **dilarang** dipakai sebagai nama variabel, nama
-  fungsi, parameter, variabel loop, atau variabel `catch`. Ini menghindari
-  ketidakcocokan antar-mesin dan langsung ketahuan lewat `vidyax check`.
-- **Aturan cakupan (scope):** nama yang diberi nilai di dalam sebuah
-  fungsi bersifat **lokal** ke fungsi itu. Membaca variabel lokal sebelum
-  ia diberi nilai adalah error. Membaca nama yang tidak pernah di-assign
-  lokal akan mencari ke cakupan luar (bisa baca variabel global).
+- Assignment uses `:` (not `=`).
+- Built-in function names are **forbidden** as variable names, function
+  names, parameters, loop variables, or `catch` variables. This avoids
+  cross-engine mismatches and is caught early by `vidyax check`.
+- **Scoping rule:** a name assigned inside a function is **local** to
+  that function. Reading a local variable before it has a value is an
+  error. Reading a name never assigned locally falls through to the outer
+  scope (so you can read globals).
 
 ---
 
-## Operator
+## Operators
 
-**Aritmatika:** `+`  `-`  `*`  `/`  `%`
+**Arithmetic:** `+`  `-`  `*`  `/`  `%`
 
-- `+` menyambung teks maupun menjumlah angka. Jika salah satu sisi teks,
-  sisi lain otomatis dikonversi ke teks.
-- `+` juga menggabung dua list.
-- `/` selalu menghasilkan desimal; pembagian oleh nol → error
+- `+` concatenates text as well as adding numbers. If one side is text,
+  the other is converted to text automatically.
+- `+` also joins two lists.
+- `/` always produces a decimal; division by zero raises
   `cannot divide by 0`.
 
-**Perbandingan:** `==`  `!=`  `<`  `<=`  `>`  `>=` → menghasilkan boolean.
+**Comparison:** `==`  `!=`  `<`  `<=`  `>`  `>=` → produce booleans.
 
-**Logika:** `and`  `or`  `not`.
+**Logic:** `and`  `or`  `not`.
 
-**Indeks:** `list[i]` atau `teks[i]`, dihitung dari 0. Indeks di luar
-jangkauan → error `index out of range`.
+**Index:** `list[i]` or `text[i]`, counting from 0. Out-of-range index
+raises `index out of range`.
 
-**Akses anggota:** `objek.anggota`. Hanya modul runtime Vidyax (yaitu
-`ai`) yang punya anggota. Anggota berawalan garis bawah (`_`) tidak bisa
-diakses (mencegah bocornya internal Python).
+**Member access:** `object.member`. Only Vidyax runtime modules (namely
+`ai`) have members. Underscore-prefixed members (`_`) cannot be accessed
+(this prevents leaking Python internals).
 
 ---
 
-## Percabangan
+## Conditionals
 
 ```vidyax
-if kondisi:
+if condition:
     ...
-elif kondisi_lain:
+elif other_condition:
     ...
 else:
     ...
 ```
 
-`elif` dan `else` opsional. Nilai dianggap "benar" bila: boolean `true`,
-angka bukan nol, teks/list tidak kosong.
+`elif` and `else` are optional. A value is considered "true" when: the
+boolean `true`, a non-zero number, or a non-empty text/list.
 
 ---
 
-## Perulangan
+## Loops
 
-**Ulang N kali** — `N` harus angka (kalau bukan → `'rpt' needs a number`):
+**Repeat N times** — `N` must be a number (otherwise →
+`'rpt' needs a number`):
 
 ```vidyax
 rpt N:
     ...
 ```
 
-**Iterasi list atau teks** — sumber harus list/teks (kalau bukan →
+**Iterate a list or text** — the source must be a list/text (otherwise →
 `'for ... in' needs a list or text`):
 
 ```vidyax
-for item in sumber:
+for item in source:
     ...
 ```
 
-**Kontrol loop:**
+**Loop control:**
 
-- `break` — keluar dari loop.
-- `continue` — lanjut ke putaran berikutnya.
+- `break` — exit the loop.
+- `continue` — skip to the next iteration.
 
-`break`/`continue` di luar loop adalah error saat *parse*
-(`'break' only works inside a loop`). `break` di dalam fungsi tidak bisa
-menembus ke loop di luar fungsi.
+`break`/`continue` outside a loop is a *parse-time* error
+(`'break' only works inside a loop`). A `break` inside a function cannot
+target a loop outside that function.
 
 ---
 
-## Fungsi
+## Functions
 
 ```vidyax
-func nama(p1, p2):
+func name(p1, p2):
     ...
-    return nilai
+    return value
 ```
 
-- `return` boleh tanpa nilai (mengembalikan `null`), atau dengan nilai.
-- `return` di luar fungsi adalah error saat parse
+- `return` may omit a value (returning `null`), or return a value.
+- `return` outside a function is a parse-time error
   (`'return' only works inside a function`).
-- Jumlah argumen harus cocok dengan jumlah parameter; kalau tidak →
-  `function 'nama' needs N args, got M`.
-- Fungsi rekursif didukung.
+- The number of arguments must match the number of parameters; otherwise
+  → `function 'name' needs N args, got M`.
+- Recursive functions are supported.
 
 ---
 
-## Penanganan error
+## Error handling
 
 ```vidyax
 try:
     ...
-catch e:      # 'e' berisi pesan error sebagai teks
+catch e:      # 'e' holds the error message as text
     ...
 ```
 
-Variabel `catch` opsional:
+The `catch` variable is optional:
 
 ```vidyax
 try:
@@ -168,131 +173,133 @@ catch:
     ...
 ```
 
-Semua error runtime (bagi nol, indeks lewat, `get` gagal, dll.) bisa
-ditangkap. Pesan error sama persis di kedua mesin eksekusi.
+All runtime errors (division by zero, out-of-range index, `get` failure,
+etc.) can be caught. Error messages are identical across both execution
+engines.
 
 ---
 
 ## Input
 
 ```vidyax
-ask "pertanyaan"
+ask "prompt"
 ```
 
-Menampilkan prompt dan membaca satu baris ketikan pengguna sebagai teks.
+Displays the prompt and reads one line of user input as text.
 
 ```vidyax
-umur: ask "Berapa umurmu?"
+age: ask "How old are you?"
 ```
 
 ---
 
-## Fungsi built-in
+## Built-in functions
 
-| Fungsi              | Hasil |
-|---------------------|-------|
-| `len(x)`            | panjang teks atau list |
+| Function            | Result |
+|---------------------|--------|
+| `len(x)`            | length of a text or list |
 | `range(n)`          | list `[0, 1, ..., n-1]` |
 | `range(a, b)`       | list `[a, ..., b-1]` |
-| `text(x)`           | ubah nilai ke teks |
-| `num(x)`            | ubah teks/nilai ke angka |
-| `upper(s)`          | teks jadi HURUF BESAR |
-| `lower(s)`          | teks jadi huruf kecil |
-| `split(s, sep=" ")` | pecah teks jadi list berdasarkan pemisah |
-| `join(lst, sep="")` | gabung list jadi teks dengan pemisah |
-| `push(lst, x)`      | tambah `x` ke akhir list |
-| `abs(x)`            | nilai mutlak |
-| `sum(x)`            | jumlah semua isi list |
-| `min(...)`          | nilai terkecil |
-| `max(...)`          | nilai terbesar |
-| `type(x)`           | nama tipe sebagai teks |
-| `get(url)`          | ambil isi URL sebagai teks (lempar error saat gagal) |
+| `text(x)`           | convert a value to text |
+| `num(x)`            | convert text/value to a number |
+| `upper(s)`          | text to UPPERCASE |
+| `lower(s)`          | text to lowercase |
+| `split(s, sep=" ")` | split text into a list by a separator |
+| `join(lst, sep="")` | join a list into text with a separator |
+| `push(lst, x)`      | append `x` to the end of a list |
+| `abs(x)`            | absolute value |
+| `sum(x)`            | sum of all items in a list |
+| `min(...)`          | smallest value |
+| `max(...)`          | largest value |
+| `type(x)`           | type name as text |
+| `get(url)`          | fetch a URL's contents as text (raises on failure) |
 
-Nama-nama di atas bersifat *reserved* — tidak bisa ditimpa.
+The names above are *reserved* — they cannot be overwritten.
 
 ---
 
-## Modul `ai`
+## The `ai` module
 
-Aktifkan dengan `use ai`. Objek `ai` muncul di lingkup program.
+Enable it with `use ai`. The `ai` object appears in the program's scope.
 
-| Anggota            | Fungsi |
-|--------------------|--------|
-| `ai.ask "..."`     | kirim prompt, kembalikan jawaban sebagai teks |
-| `ai.system "..."`  | set instruksi sistem (persona/aturan) |
-| `ai.open "..."`    | ganti model atau penyedia |
-| `ai.model`         | nama model aktif |
-| `ai.provider`      | nama penyedia aktif (`groq` / `openai`) |
-| `ai.system_prompt` | isi instruksi sistem aktif |
+| Member             | Function |
+|--------------------|----------|
+| `ai.ask "..."`     | send a prompt, return the answer as text |
+| `ai.system "..."`  | set a system instruction (persona/rules) |
+| `ai.open "..."`    | change the model or provider |
+| `ai.model`         | the active model name |
+| `ai.provider`      | the active provider name (`groq` / `openai`) |
+| `ai.system_prompt` | the active system instruction |
 
-**Format `ai.open`:**
+**`ai.open` format:**
 
-- `ai.open "nama-model"` — ganti model, penyedia tetap.
-- `ai.open "penyedia:model"` — ganti keduanya, mis. `"openai:gpt-4o-mini"`.
+- `ai.open "model-name"` — change model, keep provider.
+- `ai.open "provider:model"` — change both, e.g. `"openai:gpt-4o-mini"`.
 
-Default: penyedia `groq`, model `llama-3.1-8b-instant`. Bisa diubah lewat
-environment `VIDYAX_MODEL`.
+Default: provider `groq`, model `llama-3.1-8b-instant`. Can be overridden
+via the `VIDYAX_MODEL` environment variable.
 
-**API key** (per penyedia):
+**API keys** (per provider):
 
-| Penyedia | Environment      | URL |
+| Provider | Environment      | URL |
 |----------|------------------|-----|
 | groq     | `GROQ_API_KEY`   | api.groq.com |
 | openai   | `OPENAI_API_KEY` | api.openai.com |
 
-Penyedia tak dikenal → `unknown AI provider`. Key belum di-set → pesan
-yang menyebut nama environment yang dibutuhkan.
+Unknown provider → `unknown AI provider`. Key not set → a message naming
+the required environment variable.
 
 ---
 
-## Perintah CLI
+## CLI commands
 
-| Perintah                 | Fungsi |
-|--------------------------|--------|
-| `vidyax run <file.vx>`   | jalankan program (jalur transpiler; default) |
-| `vidyax walk <file.vx>`  | jalankan lewat tree-walker |
-| `vidyax build <file.vx>` | terjemahkan ke file Python `.py` mandiri |
-| `vidyax check <file.vx>` | cek statis saja, keluarkan error dalam JSON (`-` = stdin) |
-| `vidyax test`            | jalankan test bawaan (di kedua mesin) |
-| `vidyax <file.vx>`       | sama dengan `run` |
+| Command                  | Function |
+|--------------------------|----------|
+| `vidyax run <file.vx>`   | run a program (transpiler path; default) |
+| `vidyax walk <file.vx>`  | run through the tree-walker |
+| `vidyax build <file.vx>` | translate to a standalone Python `.py` file |
+| `vidyax bytecode <file.vx>` | compile to VVM bytecode `.vxc` |
+| `vidyax check <file.vx>` | static check only, output errors as JSON (`-` = stdin) |
+| `vidyax test`            | run the built-in tests (both engines) |
+| `vidyax <file.vx>`       | same as `run` |
 
-Menjalankan tanpa argumen membuka REPL interaktif.
+Running with no arguments opens the interactive REPL.
 
-Perintah roadmap (dikenali tapi belum jalan): `fmt`, `install`, dan kata
-kunci `agent`, `go`, `use web`, `use database`.
-
----
-
-## Katalog pesan error
-
-| Pesan | Sebab |
-|-------|-------|
-| `variable 'X' is not defined` | membaca variabel yang belum ada |
-| `variable 'X' is assigned in this function but used before it has a value` | membaca variabel lokal sebelum diberi nilai |
-| `'X' is a built-in function name — pick a different name` | menimpa nama built-in |
-| `cannot divide by 0` | pembagian oleh nol |
-| `index out of range` | indeks list/teks di luar jangkauan |
-| `'rpt' needs a number` | `rpt` dengan nilai non-angka |
-| `'for ... in' needs a list or text` | iterasi sumber non-list/teks |
-| `this is not a function` | memanggil nilai yang bukan fungsi |
-| `function 'X' needs N args, got M` | jumlah argumen salah |
-| `member 'X' is private` | akses anggota berawalan `_` |
-| `object has no member 'X'` | akses anggota pada nilai yang tak punya anggota |
-| `'ai' has no member 'X'` | anggota `ai` tak dikenal |
-| `unknown AI provider 'X'` | penyedia AI tak dikenal |
-| `'break' only works inside a loop` | `break`/`continue` di luar loop |
-| `'return' only works inside a function` | `return` di luar fungsi |
-| `get() failed: ...` | `get(url)` gagal (koneksi/HTTP) |
-
-Semua pesan konsisten antara `run` dan `walk`.
+Roadmap commands (recognized but not yet runnable): `fmt`, `install`, and
+the keywords `agent`, `go`, `use web`, `use database`.
 
 ---
 
-## Kata kunci (reserved words)
+## Error message catalog
+
+| Message | Cause |
+|---------|-------|
+| `variable 'X' is not defined` | reading a variable that doesn't exist |
+| `variable 'X' is assigned in this function but used before it has a value` | reading a local before it's assigned |
+| `'X' is a built-in function name — pick a different name` | overwriting a built-in name |
+| `cannot divide by 0` | division by zero |
+| `index out of range` | list/text index out of bounds |
+| `'rpt' needs a number` | `rpt` with a non-number value |
+| `'for ... in' needs a list or text` | iterating a non-list/text source |
+| `this is not a function` | calling a value that isn't a function |
+| `function 'X' needs N args, got M` | wrong number of arguments |
+| `member 'X' is private` | accessing an underscore-prefixed member |
+| `object has no member 'X'` | accessing a member on a value with no members |
+| `'ai' has no member 'X'` | unknown `ai` member |
+| `unknown AI provider 'X'` | unknown AI provider |
+| `'break' only works inside a loop` | `break`/`continue` outside a loop |
+| `'return' only works inside a function` | `return` outside a function |
+| `get() failed: ...` | `get(url)` failed (connection/HTTP) |
+
+All messages are consistent between `run` and `walk`.
+
+---
+
+## Keywords (reserved words)
 
 ```
 print  if  elif  else  rpt  for  in  func  return
 ask  use  and  or  not  true  false  null
 break  continue  try  catch
-agent  go        # roadmap, belum jalan
+agent  go        # roadmap, not runnable yet
 ```
