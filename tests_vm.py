@@ -1,0 +1,102 @@
+# -*- coding: utf-8 -*-
+"""Differential tests for the C VM (vxvm) against the Python engines.
+
+Reuses the exact CASES/ERROR_CASES from tests.py: compiles each case to
+bytecode, runs ./vm/vxvm, and requires stdout + error text to match the
+expected result. Cases using features the VM doesn't support yet
+(`use ai`, member access) are skipped explicitly and counted.
+
+Run: python3 tests_vm.py
+"""
+import os
+import subprocess
+import sys
+import tempfile
+
+import vxc
+from tests import CASES, ERROR_CASES
+
+VM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vm", "vxvm")
+# extra flags, e.g.: VXVM_FLAGS="--gc-stress" python3 tests_vm.py
+VM_FLAGS = os.environ.get("VXVM_FLAGS", "").split()
+
+# VM milestone 1 doesn't do `use ai` / member access (compile-time reject)
+def supported(src):
+    return "use ai" not in src and ".__class__" not in src
+
+
+def run_vm(src):
+    """Compile + run on the VM. Returns (stdout, error_msg_or_None)."""
+    with tempfile.NamedTemporaryFile(suffix=".vxc", delete=False) as f:
+        path = f.name
+    try:
+        c = vxc.compile_source(src)
+    except vxc.VidyaxError as e:
+        os.unlink(path)
+        return "", e.msg   # parse/compile errors: same front-end as engines
+    try:
+        with open(path, "wb") as f:
+            f.write(c.serialize())
+        r = subprocess.run([VM] + VM_FLAGS + [path], capture_output=True, text=True,
+                           timeout=30)
+        out = r.stdout
+        err = None
+        if r.returncode != 0:
+            # the VM prints "[Vidyax] msg" as its last stdout line on error
+            lines = out.rstrip("\n").split("\n")
+            if lines and lines[-1].startswith("[Vidyax] "):
+                err = lines[-1][len("[Vidyax] "):]
+                out = "".join(l + "\n" for l in lines[:-1]) if len(lines) > 1 else ""
+            else:
+                err = (r.stderr.strip() or "vm crashed "
+                       f"(exit {r.returncode})")
+        return out, err
+    finally:
+        os.unlink(path)
+
+
+def main():
+    passed = failed = skipped = 0
+
+    for i, (src, want) in enumerate(CASES, 1):
+        if not supported(src):
+            skipped += 1
+            continue
+        out, err = run_vm(src)
+        if err is not None:
+            failed += 1
+            print(f"  FAIL vm-test {i}: errored: {err!r} (stdout={out!r})")
+        elif out != want:
+            failed += 1
+            print(f"  FAIL vm-test {i}: got {out!r}, want {want!r}")
+        else:
+            passed += 1
+            print(f"  PASS vm-test {i}")
+
+    base = len(CASES)
+    for i, (src, want_sub) in enumerate(ERROR_CASES, 1):
+        if not supported(src):
+            skipped += 1
+            continue
+        out, err = run_vm(src)
+        if err is None:
+            failed += 1
+            print(f"  FAIL vm-err {i} (#{base+i}): did not error "
+                  f"(stdout={out!r})")
+        elif want_sub not in err:
+            failed += 1
+            print(f"  FAIL vm-err {i} (#{base+i}): error {err!r} "
+                  f"missing {want_sub!r}")
+        else:
+            passed += 1
+            print(f"  PASS vm-err {i} (#{base+i})")
+
+    total = len(CASES) + len(ERROR_CASES)
+    print(f"\nVM: {passed} passed, {failed} failed, {skipped} skipped "
+          f"(ai/member — not in VM milestone 1) of {total}")
+    if failed:
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

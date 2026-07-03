@@ -1426,9 +1426,10 @@ def main():
             "  vidyax <file.vx>           run a file (fast: compiles to Python)\n"
             "  vidyax run <file.vx>       run a file\n"
             "  vidyax build <file.vx>     compile to a standalone <file>.py\n"
+            "  vidyax bytecode <file.vx>  compile to VVM bytecode <file>.vxc\n"
             "  vidyax walk <file.vx>      run with the tree-walker (debug)\n"
             "  vidyax check <file.vx|->    static check only, JSON errors (- = stdin)\n"
-            "  vidyax test                run built-in tests\n"
+            "  vidyax test                run built-in tests (both engines)\n"
         )
         return
     cmd = args[0]
@@ -1442,6 +1443,14 @@ def main():
         try:
             out = build_file(args[1])
             print(f"[Vidyax] compiled -> {out}")
+        except VidyaxError as e:
+            print(e.show()); sys.exit(1)
+    elif cmd == "bytecode":
+        if len(args) < 2:
+            print("[Vidyax] usage: vidyax bytecode <file.vx>"); sys.exit(1)
+        try:
+            import vxc  # noqa: the VVM compiler lives in vxc.py
+            print(f"[Vidyax] bytecode -> {vxc.compile_file(args[1])}")
         except VidyaxError as e:
             print(e.show()); sys.exit(1)
     elif cmd == "walk":
