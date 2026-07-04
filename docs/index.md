@@ -67,4 +67,3 @@ self-built C runtime — not on top of Python.
 ---
 
 <small>Built by **NaDev** · from a student's hands, for students.</small>
-google-site-verification: googlea340c9e7d1cb8c58.html
