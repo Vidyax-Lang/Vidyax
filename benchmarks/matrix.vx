@@ -1,0 +1,44 @@
+#!/usr/bin/env vax
+# Benchmark: perkalian matrix ukuran kecil-menengah.
+#
+# Jalankan:
+#   time python3 vidyax.py run benchmarks/matrix.vx
+#   time python3 vidyax.py walk benchmarks/matrix.vx
+
+func makeMatrix(size, seed):
+    rows: []
+    for r in range(size):
+        row: []
+        for c in range(size):
+            value: ((r + 1) * (c + 3) + seed + (r % 5) * 7 + (c % 3)) % 97
+            push(row, value)
+        push(rows, row)
+    return rows
+
+func multiply(a, b, size):
+    out: []
+    for r in range(size):
+        row: []
+        for c in range(size):
+            cell: 0
+            for k in range(size):
+                cell: cell + (a[r][k] * b[k][c])
+            push(row, cell)
+        push(out, row)
+    return out
+
+func checksum(matrix, size):
+    total: 0
+    for r in range(size):
+        for c in range(size):
+            total: total + matrix[r][c] * (r + 1) * (c + 1)
+    return total
+
+size: 26
+a: makeMatrix(size, 11)
+b: makeMatrix(size, 29)
+product: multiply(a, b, size)
+
+print "matrix size = " + size + "x" + size
+print "corner = " + product[0][0] + ", " + product[size - 1][size - 1]
+print "checksum = " + checksum(product, size)

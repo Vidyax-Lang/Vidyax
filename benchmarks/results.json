@@ -1,0 +1,1263 @@
+[
+  {
+    "file": "fibonacci.vx",
+    "path": "/home/nans/vidyax/benchmarks/fibonacci.vx",
+    "timestamp": "2026-07-03T19:23:38.118621+00:00",
+    "run": {
+      "elapsed_s": 1.599975,
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 50.188232,
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "matrix.vx",
+    "path": "/home/nans/vidyax/benchmarks/matrix.vx",
+    "timestamp": "2026-07-03T19:24:29.906956+00:00",
+    "run": {
+      "elapsed_s": 0.161753,
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 0.464951,
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "quicksort.vx",
+    "path": "/home/nans/vidyax/benchmarks/quicksort.vx",
+    "timestamp": "2026-07-03T19:24:30.533765+00:00",
+    "run": {
+      "elapsed_s": 0.145607,
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 0.192115,
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "recursive_function.vx",
+    "path": "/home/nans/vidyax/benchmarks/recursive_function.vx",
+    "timestamp": "2026-07-03T19:24:30.871587+00:00",
+    "run": {
+      "elapsed_s": 0.484317,
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 10.880922,
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "string_manipulations.vx",
+    "path": "/home/nans/vidyax/benchmarks/string_manipulations.vx",
+    "timestamp": "2026-07-03T19:24:42.236929+00:00",
+    "run": {
+      "elapsed_s": 0.161926,
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 0.256241,
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "fibonacci.vx",
+    "path": "/home/nans/vidyax/benchmarks/fibonacci.vx",
+    "timestamp": "2026-07-03T19:28:24.986824+00:00",
+    "run": {
+      "elapsed_s": 1.820726,
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 68.559014,
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "matrix.vx",
+    "path": "/home/nans/vidyax/benchmarks/matrix.vx",
+    "timestamp": "2026-07-03T19:29:35.366721+00:00",
+    "run": {
+      "elapsed_s": 0.239756,
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 0.655222,
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "quicksort.vx",
+    "path": "/home/nans/vidyax/benchmarks/quicksort.vx",
+    "timestamp": "2026-07-03T19:29:36.261837+00:00",
+    "run": {
+      "elapsed_s": 0.212097,
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 0.289386,
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "recursive_function.vx",
+    "path": "/home/nans/vidyax/benchmarks/recursive_function.vx",
+    "timestamp": "2026-07-03T19:29:36.763459+00:00",
+    "run": {
+      "elapsed_s": 0.645328,
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 14.930834,
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "string_manipulations.vx",
+    "path": "/home/nans/vidyax/benchmarks/string_manipulations.vx",
+    "timestamp": "2026-07-03T19:29:52.339741+00:00",
+    "run": {
+      "elapsed_s": 0.234222,
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 0.378308,
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "quicksort.vx",
+    "path": "/home/nans/vidyax/benchmarks/quicksort.vx",
+    "timestamp": "2026-07-03T19:30:41.841481+00:00",
+    "run": {
+      "elapsed_s": 0.255724,
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 0.330777,
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "matrix.vx",
+    "path": "/home/nans/vidyax/benchmarks/matrix.vx",
+    "timestamp": "2026-07-03T19:30:42.428138+00:00",
+    "run": {
+      "elapsed_s": 0.24595,
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 0.714815,
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "fibonacci.vx",
+    "path": "benchmarks/fibonacci.vx",
+    "timestamp": "2026-07-03T19:30:54.652045+00:00",
+    "run": {
+      "elapsed_s": 2.303113,
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 70.404774,
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "fibonacci.vx",
+    "path": "/home/nans/vidyax/benchmarks/fibonacci.vx",
+    "timestamp": "2026-07-03T19:37:11.355014+00:00",
+    "run": {
+      "elapsed_s": 1.767532,
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 49.977297,
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "matrix.vx",
+    "path": "/home/nans/vidyax/benchmarks/matrix.vx",
+    "timestamp": "2026-07-03T19:38:03.100133+00:00",
+    "run": {
+      "elapsed_s": 0.170027,
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 0.455539,
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "quicksort.vx",
+    "path": "/home/nans/vidyax/benchmarks/quicksort.vx",
+    "timestamp": "2026-07-03T19:38:03.725944+00:00",
+    "run": {
+      "elapsed_s": 0.162368,
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 0.201406,
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "recursive_function.vx",
+    "path": "/home/nans/vidyax/benchmarks/recursive_function.vx",
+    "timestamp": "2026-07-03T19:38:04.089963+00:00",
+    "run": {
+      "elapsed_s": 0.510689,
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 10.919709,
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "string_manipulations.vx",
+    "path": "/home/nans/vidyax/benchmarks/string_manipulations.vx",
+    "timestamp": "2026-07-03T19:38:15.520519+00:00",
+    "run": {
+      "elapsed_s": 0.175097,
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "walk": {
+      "elapsed_s": 0.267611,
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0
+    }
+  },
+  {
+    "file": "fibonacci.vx",
+    "path": "/home/nans/vidyax/benchmarks/fibonacci.vx",
+    "timestamp": "2026-07-03T19:47:50.910136+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 1.611911,
+      "avg_s": 1.65922,
+      "trials": [
+        1.750231,
+        1.615519,
+        1.611911
+      ],
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 48.951535,
+      "avg_s": 49.264869,
+      "trials": [
+        48.951535,
+        49.178913,
+        49.664158
+      ],
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 30.37
+  },
+  {
+    "file": "matrix.vx",
+    "path": "/home/nans/vidyax/benchmarks/matrix.vx",
+    "timestamp": "2026-07-03T19:50:23.682823+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.159155,
+      "avg_s": 0.163083,
+      "trials": [
+        0.170267,
+        0.159828,
+        0.159155
+      ],
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.460745,
+      "avg_s": 0.460773,
+      "trials": [
+        0.460823,
+        0.460745,
+        0.460751
+      ],
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 2.89
+  },
+  {
+    "file": "quicksort.vx",
+    "path": "/home/nans/vidyax/benchmarks/quicksort.vx",
+    "timestamp": "2026-07-03T19:50:25.554756+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.1444,
+      "avg_s": 0.148068,
+      "trials": [
+        0.152356,
+        0.147448,
+        0.1444
+      ],
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.190935,
+      "avg_s": 0.193722,
+      "trials": [
+        0.195087,
+        0.190935,
+        0.195143
+      ],
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 1.32
+  },
+  {
+    "file": "recursive_function.vx",
+    "path": "/home/nans/vidyax/benchmarks/recursive_function.vx",
+    "timestamp": "2026-07-03T19:50:26.580420+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.482769,
+      "avg_s": 0.491895,
+      "trials": [
+        0.498169,
+        0.494746,
+        0.482769
+      ],
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 10.679698,
+      "avg_s": 10.831133,
+      "trials": [
+        10.679698,
+        10.882521,
+        10.93118
+      ],
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 22.12
+  },
+  {
+    "file": "string_manipulations.vx",
+    "path": "/home/nans/vidyax/benchmarks/string_manipulations.vx",
+    "timestamp": "2026-07-03T19:51:00.549862+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.161378,
+      "avg_s": 0.165126,
+      "trials": [
+        0.170438,
+        0.163563,
+        0.161378
+      ],
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.259784,
+      "avg_s": 0.26137,
+      "trials": [
+        0.259784,
+        0.261238,
+        0.263089
+      ],
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 1.61
+  },
+  {
+    "file": "fibonacci.vx",
+    "path": "/home/nans/vidyax/benchmarks/fibonacci.vx",
+    "timestamp": "2026-07-04T10:07:16.744770+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 1.646465,
+      "avg_s": 1.656759,
+      "trials": [
+        1.667989,
+        1.655824,
+        1.646465
+      ],
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 49.008538,
+      "avg_s": 49.142071,
+      "trials": [
+        49.404061,
+        49.008538,
+        49.013614
+      ],
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 29.77
+  },
+  {
+    "file": "matrix.vx",
+    "path": "/home/nans/vidyax/benchmarks/matrix.vx",
+    "timestamp": "2026-07-04T10:09:49.141640+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.157983,
+      "avg_s": 0.162072,
+      "trials": [
+        0.168977,
+        0.159257,
+        0.157983
+      ],
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.45583,
+      "avg_s": 0.458612,
+      "trials": [
+        0.456153,
+        0.45583,
+        0.463852
+      ],
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 2.89
+  },
+  {
+    "file": "quicksort.vx",
+    "path": "/home/nans/vidyax/benchmarks/quicksort.vx",
+    "timestamp": "2026-07-04T10:09:51.003967+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.145566,
+      "avg_s": 0.162594,
+      "trials": [
+        0.177298,
+        0.164918,
+        0.145566
+      ],
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.189542,
+      "avg_s": 0.190388,
+      "trials": [
+        0.191677,
+        0.189542,
+        0.189946
+      ],
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 1.3
+  },
+  {
+    "file": "recursive_function.vx",
+    "path": "/home/nans/vidyax/benchmarks/recursive_function.vx",
+    "timestamp": "2026-07-04T10:09:52.063184+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.489156,
+      "avg_s": 0.499441,
+      "trials": [
+        0.511705,
+        0.489156,
+        0.497461
+      ],
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 10.645108,
+      "avg_s": 10.757949,
+      "trials": [
+        10.824354,
+        10.645108,
+        10.804384
+      ],
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 21.76
+  },
+  {
+    "file": "string_manipulations.vx",
+    "path": "/home/nans/vidyax/benchmarks/string_manipulations.vx",
+    "timestamp": "2026-07-04T10:10:25.835674+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.159721,
+      "avg_s": 0.169801,
+      "trials": [
+        0.187162,
+        0.162521,
+        0.159721
+      ],
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.25939,
+      "avg_s": 0.261266,
+      "trials": [
+        0.260931,
+        0.263477,
+        0.25939
+      ],
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 1.62
+  },
+  {
+    "file": "fibonacci.vx",
+    "path": "/home/nans/vidyax/benchmarks/fibonacci.vx",
+    "timestamp": "2026-07-04T10:18:53.915889+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 1.598256,
+      "avg_s": 1.664796,
+      "trials": [
+        1.772803,
+        1.623328,
+        1.598256
+      ],
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 48.529901,
+      "avg_s": 48.864247,
+      "trials": [
+        48.529901,
+        49.269701,
+        48.793139
+      ],
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "vxvm": {
+      "elapsed_s": 0.489542,
+      "avg_s": 0.493882,
+      "trials": [
+        0.496825,
+        0.489542,
+        0.495279
+      ],
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 30.36,
+    "vxvm_vs_run": 3.26,
+    "vxvm_vs_walk": 99.13
+  },
+  {
+    "file": "matrix.vx",
+    "path": "/home/nans/vidyax/benchmarks/matrix.vx",
+    "timestamp": "2026-07-04T10:21:27.358534+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.158365,
+      "avg_s": 0.165836,
+      "trials": [
+        0.176484,
+        0.158365,
+        0.162659
+      ],
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.451603,
+      "avg_s": 0.459597,
+      "trials": [
+        0.451603,
+        0.465858,
+        0.461331
+      ],
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "vxvm": {
+      "elapsed_s": 0.010603,
+      "avg_s": 0.011739,
+      "trials": [
+        0.010603,
+        0.013867,
+        0.010748
+      ],
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 2.85,
+    "vxvm_vs_run": 14.94,
+    "vxvm_vs_walk": 42.59
+  },
+  {
+    "file": "quicksort.vx",
+    "path": "/home/nans/vidyax/benchmarks/quicksort.vx",
+    "timestamp": "2026-07-04T10:21:29.650644+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.144393,
+      "avg_s": 0.149966,
+      "trials": [
+        0.159382,
+        0.146123,
+        0.144393
+      ],
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.189585,
+      "avg_s": 0.19126,
+      "trials": [
+        0.192676,
+        0.191518,
+        0.189585
+      ],
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "vxvm": {
+      "elapsed_s": 0.003127,
+      "avg_s": 0.003309,
+      "trials": [
+        0.003521,
+        0.00328,
+        0.003127
+      ],
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 1.31,
+    "vxvm_vs_run": 46.18,
+    "vxvm_vs_walk": 60.63
+  },
+  {
+    "file": "recursive_function.vx",
+    "path": "/home/nans/vidyax/benchmarks/recursive_function.vx",
+    "timestamp": "2026-07-04T10:21:31.060818+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.482221,
+      "avg_s": 0.485522,
+      "trials": [
+        0.490291,
+        0.484054,
+        0.482221
+      ],
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 10.750375,
+      "avg_s": 10.828947,
+      "trials": [
+        10.787165,
+        10.949302,
+        10.750375
+      ],
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "vxvm": {
+      "elapsed_s": 0.097909,
+      "avg_s": 0.098521,
+      "trials": [
+        0.097909,
+        0.097954,
+        0.0997
+      ],
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 22.29,
+    "vxvm_vs_run": 4.93,
+    "vxvm_vs_walk": 109.8
+  },
+  {
+    "file": "string_manipulations.vx",
+    "path": "/home/nans/vidyax/benchmarks/string_manipulations.vx",
+    "timestamp": "2026-07-04T10:22:05.676839+00:00",
+    "repeat": 3,
+    "run": {
+      "elapsed_s": 0.160986,
+      "avg_s": 0.163941,
+      "trials": [
+        0.168682,
+        0.162155,
+        0.160986
+      ],
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.256559,
+      "avg_s": 0.260731,
+      "trials": [
+        0.257588,
+        0.256559,
+        0.268046
+      ],
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "vxvm": {
+      "elapsed_s": 0.029895,
+      "avg_s": 0.030975,
+      "trials": [
+        0.029895,
+        0.030884,
+        0.032147
+      ],
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 1.59,
+    "vxvm_vs_run": 5.39,
+    "vxvm_vs_walk": 8.58
+  },
+  {
+    "file": "fibonacci.vx",
+    "path": "/home/nans/vidyax/benchmarks/fibonacci.vx",
+    "timestamp": "2026-07-04T10:26:45.748115+00:00",
+    "repeat": 8,
+    "run": {
+      "elapsed_s": 1.587579,
+      "avg_s": 1.642527,
+      "trials": [
+        1.949077,
+        1.5986,
+        1.596751,
+        1.599608,
+        1.611041,
+        1.587785,
+        1.587579,
+        1.609779
+      ],
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 48.078945,
+      "avg_s": 49.093615,
+      "trials": [
+        49.480668,
+        49.131197,
+        49.737418,
+        48.968056,
+        49.950068,
+        48.853036,
+        48.54953,
+        48.078945
+      ],
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "vxvm": {
+      "elapsed_s": 0.48797,
+      "avg_s": 0.491165,
+      "trials": [
+        0.491896,
+        0.488815,
+        0.49472,
+        0.491208,
+        0.489019,
+        0.494259,
+        0.491432,
+        0.48797
+      ],
+      "stdout": "fib(30) = 832040\nloopSum(300000) = 14399202\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 30.28,
+    "vxvm_vs_run": 3.25,
+    "vxvm_vs_walk": 98.53
+  },
+  {
+    "file": "matrix.vx",
+    "path": "/home/nans/vidyax/benchmarks/matrix.vx",
+    "timestamp": "2026-07-04T10:33:36.555083+00:00",
+    "repeat": 8,
+    "run": {
+      "elapsed_s": 0.158245,
+      "avg_s": 0.170324,
+      "trials": [
+        0.196993,
+        0.174255,
+        0.162373,
+        0.159576,
+        0.158245,
+        0.162004,
+        0.167645,
+        0.1815
+      ],
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.448026,
+      "avg_s": 0.454591,
+      "trials": [
+        0.458731,
+        0.448026,
+        0.452557,
+        0.452397,
+        0.450597,
+        0.455227,
+        0.455876,
+        0.463318
+      ],
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "vxvm": {
+      "elapsed_s": 0.010417,
+      "avg_s": 0.010617,
+      "trials": [
+        0.011559,
+        0.010514,
+        0.010427,
+        0.010421,
+        0.010726,
+        0.010445,
+        0.010417,
+        0.010424
+      ],
+      "stdout": "matrix size = 26x26\ncorner = 32957, 66177\nchecksum = 7483222468\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 2.83,
+    "vxvm_vs_run": 15.19,
+    "vxvm_vs_walk": 43.01
+  },
+  {
+    "file": "quicksort.vx",
+    "path": "/home/nans/vidyax/benchmarks/quicksort.vx",
+    "timestamp": "2026-07-04T10:33:42.645217+00:00",
+    "repeat": 8,
+    "run": {
+      "elapsed_s": 0.143631,
+      "avg_s": 0.151409,
+      "trials": [
+        0.153182,
+        0.167905,
+        0.150435,
+        0.149237,
+        0.144483,
+        0.148762,
+        0.153638,
+        0.143631
+      ],
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.189651,
+      "avg_s": 0.191515,
+      "trials": [
+        0.190826,
+        0.192327,
+        0.190345,
+        0.191869,
+        0.194372,
+        0.191047,
+        0.189651,
+        0.191679
+      ],
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "vxvm": {
+      "elapsed_s": 0.003149,
+      "avg_s": 0.00371,
+      "trials": [
+        0.00321,
+        0.004877,
+        0.004356,
+        0.00453,
+        0.003212,
+        0.003169,
+        0.003175,
+        0.003149
+      ],
+      "stdout": "quicksort size = 220\nfirst = 1\nmiddle = 500\nlast = 998\nchecksum = 16124849\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 1.32,
+    "vxvm_vs_run": 45.61,
+    "vxvm_vs_walk": 60.23
+  },
+  {
+    "file": "recursive_function.vx",
+    "path": "/home/nans/vidyax/benchmarks/recursive_function.vx",
+    "timestamp": "2026-07-04T10:33:46.440728+00:00",
+    "repeat": 8,
+    "run": {
+      "elapsed_s": 0.47883,
+      "avg_s": 0.484774,
+      "trials": [
+        0.491428,
+        0.47883,
+        0.484408,
+        0.487271,
+        0.48728,
+        0.484478,
+        0.483996,
+        0.480503
+      ],
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 10.65467,
+      "avg_s": 10.811036,
+      "trials": [
+        10.65467,
+        10.761742,
+        10.709358,
+        10.860061,
+        10.858184,
+        10.942943,
+        10.770686,
+        10.930642
+      ],
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "vxvm": {
+      "elapsed_s": 0.097399,
+      "avg_s": 0.09889,
+      "trials": [
+        0.098879,
+        0.098122,
+        0.098664,
+        0.098649,
+        0.101504,
+        0.100294,
+        0.097399,
+        0.09761
+      ],
+      "stdout": "branchCount(18) = 524287\ngcdSweep(5000) = 19499\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 22.25,
+    "vxvm_vs_run": 4.92,
+    "vxvm_vs_walk": 109.39
+  },
+  {
+    "file": "string_manipulations.vx",
+    "path": "/home/nans/vidyax/benchmarks/string_manipulations.vx",
+    "timestamp": "2026-07-04T10:35:18.596677+00:00",
+    "repeat": 8,
+    "run": {
+      "elapsed_s": 0.158508,
+      "avg_s": 0.168516,
+      "trials": [
+        0.169651,
+        0.161392,
+        0.165629,
+        0.163171,
+        0.158508,
+        0.161077,
+        0.176935,
+        0.191764
+      ],
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "walk": {
+      "elapsed_s": 0.254671,
+      "avg_s": 0.259522,
+      "trials": [
+        0.266533,
+        0.257422,
+        0.259524,
+        0.25778,
+        0.262541,
+        0.254671,
+        0.259917,
+        0.257789
+      ],
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "vxvm": {
+      "elapsed_s": 0.029803,
+      "avg_s": 0.030635,
+      "trials": [
+        0.030122,
+        0.030422,
+        0.031656,
+        0.029803,
+        0.030231,
+        0.030562,
+        0.032004,
+        0.030283
+      ],
+      "stdout": "rounds = 650\nlength = 5746\npieces = 651\nscore = 27623\n",
+      "stderr": "",
+      "returncode": 0,
+      "timeout": false,
+      "repeat_consistent": true
+    },
+    "status": "PASS",
+    "speedup": 1.61,
+    "vxvm_vs_run": 5.32,
+    "vxvm_vs_walk": 8.55
+  }
+]

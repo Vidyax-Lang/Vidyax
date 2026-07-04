@@ -1,0 +1,50 @@
+#!/usr/bin/env vax
+# Benchmark: quicksort rekursif pada data deterministik.
+#
+# Jalankan:
+#   time python3 vidyax.py run benchmarks/quicksort.vx
+#   time python3 vidyax.py walk benchmarks/quicksort.vx
+
+func makeData(n):
+    data: []
+    for i in range(n):
+        value: ((i * 37) + (i % 11) * 19 + 23) % 1000
+        push(data, value)
+    return data
+
+func quicksort(xs):
+    if len(xs) <= 1:
+        return xs
+
+    pivot: xs[0]
+    less: []
+    same: []
+    greater: []
+
+    for x in xs:
+        if x < pivot:
+            push(less, x)
+        elif x > pivot:
+            push(greater, x)
+        else:
+            push(same, x)
+
+    return quicksort(less) + same + quicksort(greater)
+
+func checksum(xs):
+    total: 0
+    weight: 1
+    for x in xs:
+        total: total + (x * weight)
+        weight: weight + 1
+    return total
+
+size: 220
+data: makeData(size)
+sorted: quicksort(data)
+
+print "quicksort size = " + size
+print "first = " + sorted[0]
+print "middle = " + sorted[110]
+print "last = " + sorted[len(sorted) - 1]
+print "checksum = " + checksum(sorted)

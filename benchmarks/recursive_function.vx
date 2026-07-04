@@ -1,0 +1,28 @@
+#!/usr/bin/env vax
+# Benchmark: fungsi rekursif bercabang dan rekursi tail-style.
+#
+# Jalankan:
+#   time python3 vidyax.py run benchmarks/recursive_function.vx
+#   time python3 vidyax.py walk benchmarks/recursive_function.vx
+
+func branchCount(depth):
+    if depth <= 0:
+        return 1
+    return branchCount(depth - 1) + branchCount(depth - 1) + 1
+
+func gcd(a, b):
+    if b == 0:
+        return a
+    return gcd(b, a % b)
+
+func gcdSweep(limit):
+    total: 0
+    for i in range(1, limit):
+        total: total + gcd(i * 37 + 11, i * 19 + 7)
+    return total
+
+depth: 18
+limit: 5000
+
+print "branchCount(" + depth + ") = " + branchCount(depth)
+print "gcdSweep(" + limit + ") = " + gcdSweep(limit)

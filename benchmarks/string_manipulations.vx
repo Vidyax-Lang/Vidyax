@@ -1,0 +1,34 @@
+#!/usr/bin/env vax
+# Benchmark: split, join, upper/lower, iterasi teks, dan concatenation.
+#
+# Jalankan:
+#   time python3 vidyax.py run benchmarks/string_manipulations.vx
+#   time python3 vidyax.py walk benchmarks/string_manipulations.vx
+
+func makeText(rounds):
+    content: "vidyax"
+    for i in range(rounds):
+        if i % 2 == 0:
+            content: upper(content) + "-" + lower("LANG") + "-" + i
+        else:
+            content: lower(content) + ":" + upper("code") + ":" + i
+        parts: split(content, "-")
+        content: join(parts, "_")
+    return content
+
+func charScore(content):
+    score: 0
+    index: 1
+    for ch in content:
+        score: score + len(ch + index)
+        index: index + 1
+    return score
+
+rounds: 650
+content: makeText(rounds)
+pieces: split(content, "_")
+
+print "rounds = " + rounds
+print "length = " + len(content)
+print "pieces = " + len(pieces)
+print "score = " + charScore(content)

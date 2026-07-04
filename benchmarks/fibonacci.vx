@@ -1,0 +1,25 @@
+#!/usr/bin/env vax
+# Benchmark: recursive Fibonacci + arithmetic loop.
+#
+# Jalankan:
+#   time python3 vidyax.py run benchmarks/fibonacci.vx
+#   time python3 vidyax.py walk benchmarks/fibonacci.vx
+#
+# Output harus sama di semua engine. Yang dibandingkan adalah waktunya.
+
+func fib(n):
+    if n < 2:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+func loopSum(limit):
+    total: 0
+    for i in range(limit):
+        total: total + (i % 97)
+    return total
+
+n: 30
+limit: 300000
+
+print "fib(" + n + ") = " + fib(n)
+print "loopSum(" + limit + ") = " + loopSum(limit)

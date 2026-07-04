@@ -68,7 +68,13 @@ to the frame it leaves.
 
 ## 3. VIR — the bytecode format (new)
 
-A `.vxc` file, little-endian:
+A `.vxc` file, little-endian. **Format version 2** (v1 files must be
+recompiled): each proto now carries its slot layout —
+`u16 nslots + name idx each` (first nparams mirror the params) and
+`u8 n_escaping_params + u8 param index each`. Two opcodes were added:
+`LOAD_SLOT`/`STORE_SLOT` (u16 slot index) for direct stack access;
+reading an unassigned slot raises the same read-before-assign error as
+the Python engines, via an internal UNSET marker.
 
 ```
 "VXC1"  magic
@@ -149,10 +155,12 @@ completion under `--max-mem 4000000` — 50 collections, peak ~1 MB.
 | 4 | `get`/`ai` via libcurl + permission flags | pending |
 | 5 | Orchestrator / automatic multi-engine dispatch | vision |
 
-Honesty benchmark (fib(27), same machine): walk 4.07s → **vxvm 1.18s**
-→ transpiler 0.18s. The VVM is already 3.4× faster than the tree-walker;
-overtaking the transpiler awaits milestone 3 — don't claim "primary
-runtime" before the numbers prove it.
+Benchmark (fib(27), same machine): walk 4.46s → transpiler 0.21s →
+**vxvm 0.05s**. With slot-based locals the VVM now beats CPython ~4×.
+The "primary runtime" claim is earned: profiling showed per-call env
+allocation as the hotspot (5.4M mallocs); escape analysis moves
+non-captured locals into stack slots, so a call like `fib` allocates
+**nothing** (23 mallocs total, all at startup).
 
 ## 7. Testing rules (mandatory)
 
