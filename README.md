@@ -6,7 +6,8 @@
 
 *"Code as simple as writing instructions."*
 
-[![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/daffa2555.vidyax?label=VS%20Marketplace&color=8A2BE2&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=daffa2555.vidyax)
+[![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/nadev.vidyax?label=VS%20Marketplace&color=8A2BE2&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=nadev.vidyax)
+[![Rating](https://img.shields.io/visual-studio-marketplace/stars/nadev.vidyax?color=gold)](https://marketplace.visualstudio.com/items?itemName=nadev.vidyax)
 [![License](https://img.shields.io/github/license/daffa2555/Vidyax?color=blue)](https://github.com/daffa2555/Vidyax/blob/main/LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/daffa2555/Vidyax?style=social)](https://github.com/daffa2555/Vidyax/stargazers)
 [![Docs](https://img.shields.io/badge/docs-online-8A2BE2)](https://daffa2555.github.io/Vidyax/)
@@ -172,9 +173,9 @@ Vidyax ships with an official **Visual Studio Code extension** that provides syn
 1. Open **Visual Studio Code**.
 2. Go to the **Extensions** panel (`Ctrl+Shift+X`).
 3. Search for **Vidyax**.
-4. Click **Install** on the official extension by `daffa2555`.
+4. Click **Install** on the official extension by `NaDev`.
 
-You can also install it directly from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=daffa2555.vidyax).
+You can also install it directly from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=nadev.vidyax).
 
 ## Contributing
 
