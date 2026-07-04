@@ -36,10 +36,12 @@ enum {
     OP_LIST, OP_INDEX, OP_CALL, OP_MAKE_FUNC, OP_RET,
     OP_PRINT, OP_ASK, OP_CHECK_RPT, OP_CHECK_ITER, OP_LEN,
     OP_TRY_PUSH, OP_TRY_POP, OP_HALT,
+    OP_LOAD_SLOT, OP_STORE_SLOT,
 };
 
 /* ---- values & objects ---- */
-typedef enum { V_NULL, V_BOOL, V_NUM, V_STR, V_LIST, V_FUNC, V_BUILTIN } VType;
+typedef enum { V_NULL, V_BOOL, V_NUM, V_STR, V_LIST, V_FUNC, V_BUILTIN,
+               V_UNSET /* internal: slot declared but not yet assigned */ } VType;
 typedef struct Obj Obj;
 typedef struct Value {
     VType t;
@@ -62,6 +64,10 @@ typedef struct Proto {
     OStr   **params;
     uint16_t ndecl;
     OStr   **decl;      /* declared locals (assigned somewhere in body) */
+    uint16_t nslots;     /* stack slots per call; first nparams = params */
+    OStr   **slot_names; /* for the read-before-assign error message */
+    uint8_t  nescp;      /* how many params escape into the heap env */
+    uint8_t *escp;       /* their param indexes */
     uint32_t codelen;
     uint8_t *code;
 } Proto;
@@ -92,7 +98,7 @@ static Obj    *all_objs = NULL;   /* GC-ready allocation list */
 #define FRAMES_MAX  1024
 #define HANDLERS_MAX 256
 
-typedef struct { Proto *proto; uint32_t ip; Env *env; } Frame;
+typedef struct { Proto *proto; uint32_t ip; Env *env; int base; } Frame;
 typedef struct { int frame; int sp; uint32_t catch_ip; } Handler;
 
 static Value   stack[STACK_MAX];   static int sp = 0;
@@ -182,6 +188,7 @@ static Env *new_env(Env *parent, Proto *proto) {
 
 /* ---- value constructors ---- */
 static Value vnull(void) { Value v; v.t = V_NULL; v.as.o = NULL; return v; }
+static Value vunset(void) { Value v; v.t = V_UNSET; v.as.o = NULL; return v; }
 static Value vbool(int b) { Value v; v.t = V_BOOL; v.as.b = !!b; return v; }
 static Value vnum(double n) { Value v; v.t = V_NUM; v.as.n = n; return v; }
 static Value vstr_o(OStr *s) { Value v; v.t = V_STR; v.as.o = (Obj *)s; return v; }
@@ -244,6 +251,7 @@ static void sb_puts(SB *sb, const char *s) { sb_put(sb, s, strlen(s)); }
 static void vstr_into(SB *sb, Value v) {
     char nb[400];
     switch (v.t) {
+    case V_UNSET: sb_puts(sb, "<unset:bug>"); break;  /* must never leak */
     case V_NULL: sb_puts(sb, "null"); break;
     case V_BOOL: sb_puts(sb, v.as.b ? "true" : "false"); break;
     case V_NUM:  fmt_double(v.as.n, nb, sizeof nb); sb_puts(sb, nb); break;
@@ -573,7 +581,11 @@ static void load(const char *path) {
         fprintf(stderr, "[Vidyax] not a .vxc file: %s\n", path); exit(1);
     }
     fpos = 4;
-    if (r_u8() != 1) { fprintf(stderr, "[Vidyax] unsupported .vxc version\n"); exit(1); }
+    if (r_u8() != 2) {
+        fprintf(stderr, "[Vidyax] unsupported .vxc version "
+                "(recompile with: vidyax bytecode <file.vx>)\n");
+        exit(1);
+    }
     nconsts = r_u32();
     consts = xmalloc(sizeof(Value) * (nconsts ? nconsts : 1));
     for (uint32_t i = 0; i < nconsts; i++) {
@@ -593,6 +605,20 @@ static void load(const char *path) {
         p->nparams = r_u8();
         p->params = xmalloc(sizeof(OStr *) * (p->nparams ? p->nparams : 1));
         for (int j = 0; j < p->nparams; j++) p->params[j] = const_str(r_u32());
+        p->nslots = r_u16();
+        if (p->nslots < p->nparams) {
+            fprintf(stderr, "[Vidyax] corrupt .vxc file\n"); exit(1);
+        }
+        p->slot_names = xmalloc(sizeof(OStr *) * (p->nslots ? p->nslots : 1));
+        for (int j = 0; j < p->nslots; j++) p->slot_names[j] = const_str(r_u32());
+        p->nescp = r_u8();
+        p->escp = xmalloc(p->nescp ? p->nescp : 1);
+        for (int j = 0; j < p->nescp; j++) {
+            p->escp[j] = r_u8();
+            if (p->escp[j] >= p->nparams) {
+                fprintf(stderr, "[Vidyax] corrupt .vxc file\n"); exit(1);
+            }
+        }
         p->ndecl = r_u16();
         p->decl = xmalloc(sizeof(OStr *) * (p->ndecl ? p->ndecl : 1));
         for (int j = 0; j < p->ndecl; j++) p->decl[j] = const_str(r_u32());
@@ -608,7 +634,8 @@ static void load(const char *path) {
 static int opsize(uint8_t op) {   /* operand bytes; -1 = unknown opcode */
     switch (op) {
     case OP_CONST: case OP_LOAD: case OP_STORE:
-    case OP_LIST: case OP_MAKE_FUNC: return 2;
+    case OP_LIST: case OP_MAKE_FUNC:
+    case OP_LOAD_SLOT: case OP_STORE_SLOT: return 2;
     case OP_CALL: return 1;
     case OP_JMP: case OP_JMP_IF_FALSE: case OP_JIF_PEEK:
     case OP_JIT_PEEK: case OP_TRY_PUSH: return 4;
@@ -652,6 +679,14 @@ static void verify(void) {
                     consts[ix].t != V_STR) {
                     fprintf(stderr, "[Vidyax] verify: LOAD/STORE needs a "
                             "name constant in '%s'\n", p->name->chars);
+                    exit(1);
+                }
+            }
+            if (op == OP_LOAD_SLOT || op == OP_STORE_SLOT) {
+                uint16_t ix; memcpy(&ix, p->code + i + 1, 2);
+                if (ix >= p->nslots) {
+                    fprintf(stderr, "[Vidyax] verify: slot %u out of "
+                            "range in '%s'\n", ix, p->name->chars);
                     exit(1);
                 }
             }
@@ -787,6 +822,7 @@ static void run(void) {
     frames[0].proto = &protos[0];
     frames[0].ip = 0;
     frames[0].env = global;
+    frames[0].base = 0;
     nframes = 1;
 
     jmp_armed = 1;
@@ -831,6 +867,21 @@ static void run(void) {
         case OP_STORE: {
             uint16_t ix; memcpy(&ix, code + fr->ip, 2); fr->ip += 2;
             env_set(fr->env, AS_STR(consts[ix]), pop()); break;
+        }
+        case OP_LOAD_SLOT: {
+            uint16_t ix; memcpy(&ix, code + fr->ip, 2); fr->ip += 2;
+            Value v = stack[fr->base + ix];
+            if (v.t == V_UNSET)   /* same rule, same words as the engines */
+                vm_error("variable '%s' is assigned in this function "
+                         "but used before it has a value",
+                         fr->proto->slot_names[ix]->chars);
+            push(v);
+            break;
+        }
+        case OP_STORE_SLOT: {
+            uint16_t ix; memcpy(&ix, code + fr->ip, 2); fr->ip += 2;
+            stack[fr->base + ix] = pop();
+            break;
         }
         case OP_ADD: { Value b = pop(), a = pop(); push(do_add(a, b)); break; }
         case OP_SUB: case OP_MUL: case OP_MOD: {
@@ -907,17 +958,36 @@ static void run(void) {
                 push(r);
             } else if (callee.t == V_FUNC) {
                 OFunc *fn = AS_FUNC(callee);
-                if (argc != fn->proto->nparams)
+                Proto *pr = fn->proto;
+                if (argc != pr->nparams)
                     vm_error("function '%s' needs %d args, got %d",
-                             fn->proto->name->chars, fn->proto->nparams, argc);
+                             pr->name->chars, pr->nparams, argc);
                 if (nframes >= FRAMES_MAX) vm_error("recursion too deep");
-                Env *env = new_env(fn->closure, fn->proto);
-                for (int i = 0; i < argc; i++)
-                    env_set(env, fn->proto->params[i], stack[sp - argc + i]);
-                sp -= argc + 1;
-                frames[nframes].proto = fn->proto;
+                /* args become the first stack slots: shift them one
+                   position down, over the callee value */
+                int base = sp - argc - 1;
+                memmove(&stack[base], &stack[base + 1],
+                        (size_t)argc * sizeof(Value));
+                sp = base + argc;
+                for (int i = argc; i < pr->nslots; i++)
+                    push(vunset());
+                Env *env;
+                if (pr->nescp > 0 || pr->ndecl > 0) {
+                    /* something escapes -> it needs a heap home */
+                    env = new_env(fn->closure, pr);
+                    for (int k = 0; k < pr->nescp; k++) {
+                        int pi = pr->escp[k];
+                        env_set(env, pr->params[pi], stack[base + pi]);
+                    }
+                } else {
+                    /* nothing escapes: NO allocation at all — the frame
+                       reuses the closure env just for outward reads */
+                    env = fn->closure;
+                }
+                frames[nframes].proto = pr;
                 frames[nframes].ip = 0;
                 frames[nframes].env = env;
+                frames[nframes].base = base;
                 nframes++;
             } else {
                 vm_error("this is not a function");
@@ -938,6 +1008,7 @@ static void run(void) {
             while (nhandlers > 0 && handlers[nhandlers - 1].frame == nframes - 1)
                 nhandlers--;
             Value r = pop();
+            sp = frames[nframes - 1].base;
             nframes--;
             push(r);
             break;

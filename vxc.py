@@ -25,6 +25,98 @@ import sys
 import vidyax
 from vidyax import VidyaxError, assigned_names
 
+
+def _refs_in(stmts):
+    """Every Var name referenced anywhere in these statements, descending
+    into nested function bodies too. If a nested function mentions name X
+    and X is a local of the enclosing function, then X is captured."""
+    out = set()
+
+    def ex(e):
+        if e is None:
+            return
+        t = type(e).__name__
+        if t == "Var":
+            out.add(e.name)
+        elif t == "Input":
+            ex(e.prompt)
+        elif t == "UnaryOp":
+            ex(e.operand)
+        elif t == "BinOp":
+            ex(e.l); ex(e.r)
+        elif t == "Call":
+            ex(e.callee)
+            for a in e.args:
+                ex(a)
+        elif t == "Index":
+            ex(e.obj); ex(e.idx)
+        elif t == "Member":
+            ex(e.obj)
+        elif t == "ListLit":
+            for it in e.items:
+                ex(it)
+
+    def st(s):
+        t = type(s).__name__
+        if t == "Assign":
+            ex(s.value); out.add(s.name)
+        elif t in ("ExprStmt", "Print"):
+            ex(s.expr)
+        elif t == "If":
+            ex(s.cond)
+            for x in s.body: st(x)
+            for x in s.orelse: st(x)
+        elif t == "RepeatN":
+            ex(s.count)
+            for x in s.body: st(x)
+        elif t == "ForEach":
+            ex(s.iterable); out.add(s.var)
+            for x in s.body: st(x)
+        elif t == "TryCatch":
+            for x in s.try_body: st(x)
+            if s.err_var:
+                out.add(s.err_var)
+            for x in s.catch_body: st(x)
+        elif t == "FuncDef":
+            for x in s.body: st(x)   # descend: nested-nested captures count
+        elif t == "Return":
+            ex(s.value)
+        elif t == "Import":
+            out.add(s.name)
+
+    for s in stmts:
+        st(s)
+    return out
+
+
+def escaping_names(body):
+    """Names referenced by a function nested directly or transitively in
+    `body`. A local of this function that appears here escapes: some inner
+    function can outlive this one and still needs it, so it must live on
+    the heap. Everything else can live in a fast stack slot.
+
+    Conservative: if a nested function has its own local shadowing the same
+    name, we still mark it escaping. That only costs a little speed, never
+    correctness."""
+    caught = set()
+
+    def walk(stmts):
+        for s in stmts:
+            t = type(s).__name__
+            if t == "FuncDef":
+                caught.update(_refs_in(s.body))
+            elif t == "If":
+                walk(s.body); walk(s.orelse)
+            elif t == "RepeatN":
+                walk(s.body)
+            elif t == "ForEach":
+                walk(s.body)
+            elif t == "TryCatch":
+                walk(s.try_body); walk(s.catch_body)
+
+    walk(body)
+    return caught
+
 # --- opcodes (keep numbering in sync with vm/vxvm.c) ---
 OPS = {
     "CONST": 1,        # u16 const idx
@@ -52,6 +144,8 @@ OPS = {
     "TRY_PUSH": 35,    # u32 catch addr
     "TRY_POP": 36,
     "HALT": 37,
+    "LOAD_SLOT": 38,   # u16 slot index (direct stack access, no lookup)
+    "STORE_SLOT": 39,  # u16 slot index
 }
 
 
@@ -103,6 +197,14 @@ class Proto:
         self.name = name
         self.params = params
         self.declared = []
+        self.escaping = []   # locals captured by a nested function -> heap
+        self.safe = []       # locals used only here -> can be a stack slot
+        # --- slot layout (stage 2) ---
+        self.use_slots = False   # main stays env-based; functions use slots
+        self.slots = []          # ordered slot names; first nparams = params
+        self.slot_of = {}        # name -> slot index (SAFE names only)
+        self.esc_param_ix = []   # param indexes whose value must be copied
+                                 # into the heap env at call entry
         self.code = bytearray()
 
 
@@ -144,9 +246,38 @@ class Compiler:
         t = len(p.code) if target is None else target
         p.code[pos:pos + 4] = struct.pack("<I", t)
 
+    # --- name resolution (stage 2): slot if safe, env name otherwise ---
+    def name_store(self, p, name):
+        ix = p.slot_of.get(name)
+        if ix is not None:
+            self.emit(p, "STORE_SLOT", ("H", ix))
+        else:
+            self.emit(p, "STORE", ("H", self.cstr(name)))
+
+    def name_load(self, p, name):
+        ix = p.slot_of.get(name)
+        if ix is not None:
+            self.emit(p, "LOAD_SLOT", ("H", ix))
+        else:
+            self.emit(p, "LOAD", ("H", self.cstr(name)))
+
+    def hidden(self, p, name):
+        """Register a compiler-generated loop variable. Inside functions it
+        gets a fresh slot (fast, and it must NOT be a named STORE: a
+        function without escaping locals has no env of its own, so a named
+        store would pollute the shared closure env)."""
+        if p.use_slots and name not in p.slot_of:
+            p.slot_of[name] = len(p.slots)
+            p.slots.append(name)
+        return name
+
     # --- program ---
     def compile_program(self, ast):
         main = Proto("<main>", [])
+        all_locals = sorted(assigned_names(ast.body))
+        esc = escaping_names(ast.body)
+        main.escaping = [n for n in all_locals if n in esc]
+        main.safe = [n for n in all_locals if n not in esc]
         self.protos.append(main)
         ctx = {"loops": [], "trydepth": 0, "hidden": 0}
         self.block(main, ast.body, ctx)
@@ -162,7 +293,7 @@ class Compiler:
         t = type(n).__name__
         if t == "Assign":
             self.expr(p, n.value, ctx)
-            self.emit(p, "STORE", ("H", self.cstr(n.name)))
+            self.name_store(p, n.name)
         elif t == "ExprStmt":
             self.expr(p, n.expr, ctx)
             self.emit(p, "POP")
@@ -184,52 +315,72 @@ class Compiler:
             # $n: CHECK_RPT(count); $i: 0
             # loop: if not ($i < $n) -> end; $i: $i+1; body; jmp loop
             hid = ctx["hidden"]; ctx["hidden"] += 1
-            n_name, i_name = self.cstr(f"$n{hid}"), self.cstr(f"$i{hid}")
+            n_name = self.hidden(p, f"$n{hid}")
+            i_name = self.hidden(p, f"$i{hid}")
             self.expr(p, n.count, ctx)
             self.emit(p, "CHECK_RPT")
-            self.emit(p, "STORE", ("H", n_name))
+            self.name_store(p, n_name)
             self.emit(p, "CONST", ("H", self.cnum(0)))
-            self.emit(p, "STORE", ("H", i_name))
+            self.name_store(p, i_name)
             loop = len(p.code)
-            self.emit(p, "LOAD", ("H", i_name))
-            self.emit(p, "LOAD", ("H", n_name))
+            self.name_load(p, i_name)
+            self.name_load(p, n_name)
             self.emit(p, "LT")
             jend = self.emit_jump(p, "JMP_IF_FALSE")
-            self.emit(p, "LOAD", ("H", i_name))
+            self.name_load(p, i_name)
             self.emit(p, "CONST", ("H", self.cnum(1)))
             self.emit(p, "ADD")
-            self.emit(p, "STORE", ("H", i_name))
+            self.name_store(p, i_name)
             self.loop_body(p, n.body, ctx, loop, jend)
         elif t == "ForEach":
             # $it: CHECK_ITER(src); $i: 0
             # loop: if not ($i < len($it)) -> end
             #       var: $it[$i]; $i: $i+1; body; jmp loop
             hid = ctx["hidden"]; ctx["hidden"] += 1
-            it_name, i_name = self.cstr(f"$it{hid}"), self.cstr(f"$i{hid}")
-            var_name = self.cstr(n.var)
+            it_name = self.hidden(p, f"$it{hid}")
+            i_name = self.hidden(p, f"$i{hid}")
             self.expr(p, n.iterable, ctx)
             self.emit(p, "CHECK_ITER")
-            self.emit(p, "STORE", ("H", it_name))
+            self.name_store(p, it_name)
             self.emit(p, "CONST", ("H", self.cnum(0)))
-            self.emit(p, "STORE", ("H", i_name))
+            self.name_store(p, i_name)
             loop = len(p.code)
-            self.emit(p, "LOAD", ("H", i_name))
-            self.emit(p, "LOAD", ("H", it_name))
+            self.name_load(p, i_name)
+            self.name_load(p, it_name)
             self.emit(p, "LEN")
             self.emit(p, "LT")
             jend = self.emit_jump(p, "JMP_IF_FALSE")
-            self.emit(p, "LOAD", ("H", it_name))
-            self.emit(p, "LOAD", ("H", i_name))
+            self.name_load(p, it_name)
+            self.name_load(p, i_name)
             self.emit(p, "INDEX")
-            self.emit(p, "STORE", ("H", var_name))
-            self.emit(p, "LOAD", ("H", i_name))
+            self.name_store(p, n.var)
+            self.name_load(p, i_name)
             self.emit(p, "CONST", ("H", self.cnum(1)))
             self.emit(p, "ADD")
-            self.emit(p, "STORE", ("H", i_name))
+            self.name_store(p, i_name)
             self.loop_body(p, n.body, ctx, loop, jend)
         elif t == "FuncDef":
             sub = Proto(n.name, list(n.params))
-            sub.declared = sorted(assigned_names(n.body) - set(n.params))
+            local_names = sorted(assigned_names(n.body) | set(n.params))
+            esc = escaping_names(n.body)
+            sub.escaping = [x for x in local_names if x in esc]
+            sub.safe = [x for x in local_names if x not in esc]
+            # --- slot layout ---
+            # Calling convention puts args at the first nparams stack
+            # positions, so EVERY param owns a slot position. But only
+            # SAFE params are addressed through it; escaping params are
+            # copied into the heap env at entry and accessed by name.
+            sub.use_slots = True
+            safe_set = set(sub.safe)
+            sub.slots = list(n.params) + [x for x in sub.safe
+                                          if x not in n.params]
+            sub.slot_of = {name: i for i, name in enumerate(sub.slots)
+                           if name in safe_set}
+            sub.esc_param_ix = [i for i, pn in enumerate(n.params)
+                                if pn not in safe_set]
+            # env read-before-assign guard now only covers escaping
+            # non-param locals (safe ones are guarded by UNSET slots)
+            sub.declared = sorted(set(sub.escaping) - set(n.params))
             self.protos.append(sub)
             ix = len(self.protos) - 1
             if ix > 0xFFFF:
@@ -239,7 +390,7 @@ class Compiler:
             self.emit(sub, "NULL")   # falling off the end returns null
             self.emit(sub, "RET")
             self.emit(p, "MAKE_FUNC", ("H", ix))
-            self.emit(p, "STORE", ("H", self.cstr(n.name)))
+            self.name_store(p, n.name)
         elif t == "Return":
             if n.value is None:
                 self.emit(p, "NULL")
@@ -262,7 +413,7 @@ class Compiler:
             jend = self.emit_jump(p, "JMP")
             self.patch(p, jtry)   # catch lands here; VM pushed the error msg
             if n.err_var:
-                self.emit(p, "STORE", ("H", self.cstr(n.err_var)))
+                self.name_store(p, n.err_var)
             else:
                 self.emit(p, "POP")
             self.block(p, n.catch_body, ctx)
@@ -311,7 +462,7 @@ class Compiler:
                 raise VidyaxError("list literal too long")
             self.emit(p, "LIST", ("H", len(n.items)))
         elif t == "Var":
-            self.emit(p, "LOAD", ("H", self.cstr(n.name)))
+            self.name_load(p, n.name)
         elif t == "Input":
             self.expr(p, n.prompt, ctx)
             self.emit(p, "ASK")
@@ -367,8 +518,10 @@ class Compiler:
                 self.cstr(name)
             for name in p.declared:
                 self.cstr(name)
+            for name in p.slots:
+                self.cstr(name)
         out = bytearray(b"VXC1")
-        out.append(1)  # version
+        out.append(2)  # version 2: protos carry slot layout
         out += struct.pack("<I", len(self.consts))
         for kind, v in self.consts:
             if kind == "num":
@@ -382,6 +535,14 @@ class Compiler:
             out.append(len(p.params))
             for name in p.params:
                 out += struct.pack("<I", self.cstr(name))
+            if len(p.slots) > 0xFFFF:
+                raise VidyaxError("too many locals in one function")
+            out += struct.pack("<H", len(p.slots))
+            for name in p.slots:
+                out += struct.pack("<I", self.cstr(name))
+            out.append(len(p.esc_param_ix))
+            for ix in p.esc_param_ix:
+                out.append(ix)
             out += struct.pack("<H", len(p.declared))
             for name in p.declared:
                 out += struct.pack("<I", self.cstr(name))
@@ -413,6 +574,7 @@ OP_NAMES = {v: k for k, v in OPS.items()}
 OPERANDS = {  # op -> (size, fmt)
     "CONST": (2, "<H"), "LOAD": (2, "<H"), "STORE": (2, "<H"),
     "LIST": (2, "<H"), "MAKE_FUNC": (2, "<H"), "CALL": (1, "<B"),
+    "LOAD_SLOT": (2, "<H"), "STORE_SLOT": (2, "<H"),
     "JMP": (4, "<I"), "JMP_IF_FALSE": (4, "<I"),
     "JIF_PEEK": (4, "<I"), "JIT_PEEK": (4, "<I"), "TRY_PUSH": (4, "<I"),
 }
@@ -425,6 +587,8 @@ def dis(c):
     for pi, p in enumerate(c.protos):
         lines.append(f"\nproto {pi} '{p.name}' params={p.params} "
                      f"declared={p.declared}")
+        lines.append(f"    escaping={p.escaping}  safe(stackable)={p.safe}")
+        lines.append(f"    slots={p.slots}  esc_params={p.esc_param_ix}")
         i = 0
         while i < len(p.code):
             op = OP_NAMES.get(p.code[i], f"?{p.code[i]}")
@@ -435,6 +599,8 @@ def dis(c):
                 extra = ""
                 if op in ("CONST", "LOAD", "STORE"):
                     extra = f"   ; {c.consts[val]!r}"
+                elif op in ("LOAD_SLOT", "STORE_SLOT"):
+                    extra = f"   ; slot '{p.slots[val]}'"
                 lines.append(f"  {i:5d}  {op} {val}{extra}")
                 i += 1 + size
             else:
