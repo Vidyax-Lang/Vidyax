@@ -192,6 +192,16 @@ def _fold(n):
     return n
 
 
+
+# operand byte-width per opcode (for the peephole pass)
+_OPSIZE = {
+    OPS["CONST"]: 2, OPS["LOAD"]: 2, OPS["STORE"]: 2,
+    OPS["LOAD_SLOT"]: 2, OPS["STORE_SLOT"]: 2,
+    OPS["LIST"]: 2, OPS["MAKE_FUNC"]: 2, OPS["CALL"]: 1,
+    OPS["JMP"]: 4, OPS["JMP_IF_FALSE"]: 4,
+    OPS["JIF_PEEK"]: 4, OPS["JIT_PEEK"]: 4, OPS["TRY_PUSH"]: 4,
+}
+
 class Proto:
     def __init__(self, name, params):
         self.name = name
@@ -508,7 +518,58 @@ class Compiler:
             raise VidyaxError(f"cannot compile expression {t}")
 
     # --- serialization ---
+    def _peephole(self, p):
+        """Local bytecode cleanups that preserve semantics. Conservative:
+        we only touch instructions that carry no jump target INTO the
+        region we remove. Because any code offset can be a jump target,
+        we first collect every jump destination and refuse to delete a
+        pair if its second instruction is a landing spot."""
+        code = p.code
+        # collect all absolute jump targets (u32 operand ops)
+        targets = set()
+        i = 0
+        while i < len(code):
+            op = code[i]
+            sz = _OPSIZE.get(op, 0)
+            if sz == 4:
+                (t,) = struct.unpack_from("<I", code, i + 1)
+                targets.add(t)
+            i += 1 + sz
+        # pattern: <pure-value op> immediately followed by POP  ->  drop both
+        # (loading a value then discarding it has no effect). Only when the
+        # POP is not itself a jump target.
+        PURE = {OPS["CONST"], OPS["LOAD_SLOT"], OPS["NULL"],
+                OPS["TRUE"], OPS["FALSE"]}
+        new = bytearray()
+        offset_map = {}          # old offset -> new offset
+        i = 0
+        while i < len(code):
+            offset_map[i] = len(new)
+            op = code[i]
+            sz = _OPSIZE.get(op, 0)
+            nxt = i + 1 + sz
+            if (op in PURE and nxt < len(code)
+                    and code[nxt] == OPS["POP"]
+                    and i not in targets and nxt not in targets):
+                i = nxt + 1      # skip the value op AND the POP
+                continue
+            new += code[i:i + 1 + sz]
+            i += 1 + sz
+        offset_map[len(code)] = len(new)
+        # rewrite jump targets through the offset map
+        j = 0
+        while j < len(new):
+            op = new[j]
+            sz = _OPSIZE.get(op, 0)
+            if sz == 4:
+                (t,) = struct.unpack_from("<I", new, j + 1)
+                struct.pack_into("<I", new, j + 1, offset_map.get(t, t))
+            j += 1 + sz
+        p.code = new
+
     def serialize(self):
+        for p in self.protos:
+            self._peephole(p)
         # Intern every name FIRST — proto names / params may never appear
         # in code, and adding consts after the count is written corrupts
         # the file.
