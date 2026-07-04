@@ -6,7 +6,6 @@
 
 *"Code as simple as writing instructions."*
 
-[![VS Marketplace](https://marketplace.visualstudio.com/items?itemName=nadev.vidyax)
 [![Rating](https://img.shields.io/visual-studio-marketplace/stars/nadev.vidyax?color=gold)](https://marketplace.visualstudio.com/items?itemName=nadev.vidyax)
 [![License](https://img.shields.io/github/license/daffa2555/Vidyax?color=blue)](https://github.com/daffa2555/Vidyax/blob/main/LICENSE)
 [![GitHub Stars](https://img.shields.io/github/stars/daffa2555/Vidyax?style=social)](https://github.com/daffa2555/Vidyax/stargazers)
