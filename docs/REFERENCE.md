@@ -213,8 +213,27 @@ age: ask "How old are you?"
 | `max(...)`          | largest value |
 | `type(x)`           | type name as text |
 | `get(url)`          | fetch a URL's contents as text (raises on failure) |
+| `readfile(path)`    | read a text file's contents (raises on failure) |
+| `writefile(path, x)`| write `x` (as text) to a file, replacing it |
+| `floor(x)`          | round down to a whole number |
+| `ceil(x)`           | round up to a whole number |
+| `round(x)`          | round to the nearest whole number (half away from zero) |
+| `round(x, digits)`  | round to `digits` decimal places |
+| `sqrt(x)`           | square root (`x` must be ≥ 0) |
+| `pow(x, y)`         | `x` raised to the power `y` |
+| `random()`          | random number ≥ 0 and < 1 |
+| `random(a, b)`      | random whole number from `a` to `b` (inclusive) |
+| `replace(s, old, new)` | replace every `old` in `s` with `new` |
+| `trim(s)`           | remove spaces/tabs/newlines from both ends |
+| `contains(x, item)` | true if list `x` has `item`, or text `x` has that substring |
+| `startswith(s, p)`  | true if text `s` starts with `p` |
+| `endswith(s, p)`    | true if text `s` ends with `p` |
 
 The names above are *reserved* — they cannot be overwritten.
+
+> On the VVM (`vidyax bytecode` + `vxvm`), `get()` needs `--allow-net`
+> and `readfile()`/`writefile()` need `--allow-fs` — both are denied by
+> default in the sandbox.
 
 ---
 

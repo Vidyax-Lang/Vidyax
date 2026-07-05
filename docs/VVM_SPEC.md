@@ -111,10 +111,11 @@ vxvm --max-instr 50000000 --max-mem 268435456 --max-time 5 prog.vxc
 - **Memory limit** — a count of **bytes** allocated (not object count),
   with every allocation path (malloc + realloc) tracked.
 - **Time limit** — CPU time, checked every 4096 instructions.
-- **Permission control** — the VVM has no file system or subprocess
-  opcodes. The only outbound capability is HTTP (`get()` and `ai.ask`),
-  and it sits behind an explicit **`--allow-net`** flag: denied by
-  default, both raise a catchable error unless the flag is passed.
+- **Permission control** — the VVM has no subprocess opcodes. Every
+  outbound capability sits behind an explicit flag and is denied by
+  default, raising a catchable error unless the flag is passed:
+  HTTP (`get()`, `ai.ask`) behind **`--allow-net`**, and file access
+  (`readfile()`, `writefile()`) behind **`--allow-fs`**.
 - **Bytecode verification** — before execution: valid opcodes,
   non-truncated operands, in-range constant/proto indices, LOAD/STORE
   pointing at text constants, and every jump target landing exactly on an

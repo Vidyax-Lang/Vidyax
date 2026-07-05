@@ -1,21 +1,16 @@
 # Vidyax — Roadmap / Catatan Fitur
 
-**Status: v1.1** — error handling lengkap (try/catch, source map, pesan ramah, kategori error) SUDAH masuk.
+**Status: v1.2** — stdlib lengkap (file, math, string) SUDAH masuk.
 
 Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas siap.
 
 ## Prioritas berikutnya
 
-1. **Stdlib lebih lengkap** (paling kepake user)
-   - Operasi file: baca/tulis file teks.
-   - Math lebih kaya: floor, ceil, round, sqrt, pow, random.
-   - String lebih kaya: replace, trim, contains, startswith/endswith.
-
-2. **REPL: blok multi-baris yang lebih mulus**
+1. **REPL: blok multi-baris yang lebih mulus**
    - Sekarang aman pakai blok satu baris.
    - Target: ketik `if x:` lalu enter, REPL nunggu isi blok sampai baris kosong.
 
-3. **`ai.ask` live**
+2. **`ai.ask` live**
    - Uji pakai GROQ_API_KEY beneran, bikin contoh program AI di `contoh/`.
 
 ## Ide lain (belum diprioritaskan)
@@ -27,6 +22,14 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 - Concurrency, package manager, LSP, debugger (target jangka panjang).
 
 ## Selesai
+
+### v1.2
+
+- ~~Stdlib lebih lengkap~~ -> 13 builtin baru (total 28), di KEDUA engine Python + VM C:
+  - File: `readfile(path)`, `writefile(path, x)` — di VM digate `--allow-fs` (deny by default).
+  - Math: `floor`, `ceil`, `round(x[, digits])` (half away from zero), `sqrt`, `pow`, `random([a, b])`.
+  - String: `replace`, `trim`, `contains` (juga untuk list), `startswith`, `endswith`.
+- Test: 84/84 differential (walk + fast), 75/75 VM (termasuk test sandbox fs-deny).
 
 ### v1.1
 

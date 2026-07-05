@@ -26,3 +26,25 @@ print "sum 1..5 = " + total
 xs: [1, 2]
 push(xs, 3)
 print xs
+
+# math
+print floor(3.7)
+print ceil(3.2)
+print round(2.5)
+print round(3.14159, 2)
+print sqrt(16)
+print pow(2, 10)
+dadu: random(1, 6)
+print "dadu: " + dadu
+
+# string
+print replace("halo dunia", "dunia", "vidyax")
+print trim("   rapi   ")
+print contains("vidyax", "dy")
+print contains([1, 2, 3], 2)
+print startswith("vidyax", "vid")
+print endswith("vidyax", "yax")
+
+# file (di VM butuh --allow-fs)
+writefile("/tmp/contoh_vx.txt", "halo dari vidyax")
+print readfile("/tmp/contoh_vx.txt")

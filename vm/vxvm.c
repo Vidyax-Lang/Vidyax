@@ -29,6 +29,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <string.h>
 #include <time.h>
 
@@ -126,6 +127,7 @@ static uint64_t max_instr = 0, instr_count = 0;
 static size_t   max_mem = 0,  mem_used = 0;
 static double   max_secs = 0; static clock_t start_clock;
 static int      allow_net = 0;   /* network (get/ai.ask) denied unless --allow-net */
+static int      allow_fs  = 0;   /* file access (readfile/writefile) denied unless --allow-fs */
 
 /* ---- GC (blueprint Bab 5): mark-sweep at safepoints ---- */
 static size_t   next_gc = 1u << 20;   /* first collection at 1 MB */
@@ -891,11 +893,155 @@ static Value b_get(int argc, Value *a) {
 #endif
 }
 
+static Value b_readfile(int argc, Value *a) {
+    if (!allow_fs)
+        vm_error("file access is not allowed "
+                 "(pass --allow-fs to enable readfile / writefile)");
+    if (argc != 1 || a[0].t != V_STR) vm_error("readfile() needs a text path");
+    FILE *f = fopen(AS_STR(a[0])->chars, "rb");
+    if (!f) vm_error("readfile() failed: %s", strerror(errno));
+    SB sb; sb_init(&sb);
+    char buf[4096]; size_t n;
+    while ((n = fread(buf, 1, sizeof buf, f)) > 0) sb_put(&sb, buf, n);
+    if (ferror(f)) {
+        fclose(f); xfree(sb.buf, sb.cap);
+        vm_error("readfile() failed: %s", strerror(errno));
+    }
+    fclose(f);
+    OStr *s = new_str(sb.buf, (uint32_t)sb.len);
+    xfree(sb.buf, sb.cap);
+    return vstr_o(s);
+}
+static Value b_writefile(int argc, Value *a) {
+    if (!allow_fs)
+        vm_error("file access is not allowed "
+                 "(pass --allow-fs to enable readfile / writefile)");
+    if (argc != 2 || a[0].t != V_STR) vm_error("writefile() needs a text path and a value");
+    OStr *txt = vstr(a[1]);
+    FILE *f = fopen(AS_STR(a[0])->chars, "wb");
+    if (!f) vm_error("writefile() failed: %s", strerror(errno));
+    size_t written = fwrite(txt->chars, 1, txt->len, f);
+    if (written != txt->len || fclose(f) != 0)
+        vm_error("writefile() failed: %s", strerror(errno));
+    return vnull();
+}
+static Value b_floor(int argc, Value *a) {
+    if (argc != 1 || !numlike(a[0])) vm_error("floor() needs a number");
+    return vnum(floor(as_num(a[0])));
+}
+static Value b_ceil(int argc, Value *a) {
+    if (argc != 1 || !numlike(a[0])) vm_error("ceil() needs a number");
+    return vnum(ceil(as_num(a[0])));
+}
+static Value b_round(int argc, Value *a) {
+    /* half away from zero, same formula as _b_round in vidyax.py */
+    if (argc < 1 || argc > 2 || !numlike(a[0])) vm_error("round() needs a number");
+    double nd = 0;
+    if (argc == 2) {
+        if (!numlike(a[1])) vm_error("round() needs a number");
+        nd = trunc(as_num(a[1]));
+        if (nd < 0) vm_error("round() digits must be 0 or more");
+    }
+    double m = pow(10.0, nd);
+    double v = as_num(a[0]) * m;
+    double r = v >= 0 ? floor(v + 0.5) : ceil(v - 0.5);
+    return vnum(r / m);
+}
+static Value b_sqrt(int argc, Value *a) {
+    if (argc != 1 || !numlike(a[0])) vm_error("sqrt() needs a number");
+    double x = as_num(a[0]);
+    if (x < 0) vm_error("sqrt() needs a number >= 0");
+    return vnum(sqrt(x));
+}
+static Value b_pow(int argc, Value *a) {
+    if (argc != 2 || !numlike(a[0]) || !numlike(a[1])) vm_error("pow() needs a number");
+    double r = pow(as_num(a[0]), as_num(a[1]));
+    if (!isfinite(r)) vm_error("pow() result is not a number");
+    return vnum(r);
+}
+static Value b_random(int argc, Value *a) {
+    static int seeded = 0;
+    if (!seeded) { srand((unsigned)time(NULL) ^ (unsigned)clock()); seeded = 1; }
+    double u = rand() / ((double)RAND_MAX + 1.0);
+    if (argc == 0) return vnum(u);
+    if (argc == 2) {
+        if (!numlike(a[0]) || !numlike(a[1])) vm_error("random() needs a number");
+        long long lo = (long long)trunc(as_num(a[0]));
+        long long hi = (long long)trunc(as_num(a[1]));
+        if (lo > hi) vm_error("random(a, b) needs a <= b");
+        return vnum((double)(lo + (long long)(u * (double)(hi - lo + 1))));
+    }
+    vm_error("random() takes no values, or two whole numbers");
+    return vnull();
+}
+static Value b_replace(int argc, Value *a) {
+    if (argc != 3) vm_error("replace() needs 3 values");
+    OStr *s = vstr(a[0]), *old = vstr(a[1]), *nw = vstr(a[2]);
+    if (old->len == 0) vm_error("replace() needs a non-empty text to find");
+    SB sb; sb_init(&sb);
+    const char *p = s->chars, *end = s->chars + s->len;
+    while (p < end) {
+        if ((size_t)(end - p) >= old->len &&
+            memcmp(p, old->chars, old->len) == 0) {
+            sb_put(&sb, nw->chars, nw->len);
+            p += old->len;
+        } else {
+            sb_put(&sb, p, 1);
+            p++;
+        }
+    }
+    OStr *r = new_str(sb.buf, (uint32_t)sb.len);
+    xfree(sb.buf, sb.cap);
+    return vstr_o(r);
+}
+static Value b_trim(int argc, Value *a) {
+    if (argc != 1) vm_error("trim() needs 1 value");
+    OStr *s = vstr(a[0]);
+    const char *b = s->chars, *e = s->chars + s->len;
+    while (b < e && isspace((unsigned char)*b)) b++;
+    while (e > b && isspace((unsigned char)e[-1])) e--;
+    return vstr_o(new_str(b, (uint32_t)(e - b)));
+}
+static Value b_contains(int argc, Value *a) {
+    if (argc != 2) vm_error("contains() needs 2 values");
+    if (a[0].t == V_LIST) {
+        OList *l = AS_LIST(a[0]);
+        for (uint32_t i = 0; i < l->count; i++)
+            if (values_eq(l->items[i], a[1])) return vbool(1);
+        return vbool(0);
+    }
+    if (a[0].t == V_STR) {
+        OStr *s = AS_STR(a[0]), *sub = vstr(a[1]);
+        if (sub->len == 0) return vbool(1);
+        for (const char *p = s->chars; p + sub->len <= s->chars + s->len; p++)
+            if (memcmp(p, sub->chars, sub->len) == 0) return vbool(1);
+        return vbool(0);
+    }
+    vm_error("contains() needs a list or text");
+    return vnull();
+}
+static Value b_startswith(int argc, Value *a) {
+    if (argc != 2) vm_error("startswith() needs 2 values");
+    OStr *s = vstr(a[0]), *p = vstr(a[1]);
+    return vbool(p->len <= s->len && memcmp(s->chars, p->chars, p->len) == 0);
+}
+static Value b_endswith(int argc, Value *a) {
+    if (argc != 2) vm_error("endswith() needs 2 values");
+    OStr *s = vstr(a[0]), *p = vstr(a[1]);
+    return vbool(p->len <= s->len &&
+                 memcmp(s->chars + (s->len - p->len), p->chars, p->len) == 0);
+}
+
 static Builtin BUILTINS[] = {
     {"len", b_len}, {"range", b_range}, {"text", b_text}, {"num", b_num},
     {"upper", b_upper}, {"lower", b_lower}, {"split", b_split},
     {"join", b_join}, {"push", b_push}, {"abs", b_abs}, {"sum", b_sum},
     {"min", b_min}, {"max", b_max}, {"type", b_type}, {"get", b_get},
+    {"readfile", b_readfile}, {"writefile", b_writefile},
+    {"floor", b_floor}, {"ceil", b_ceil}, {"round", b_round},
+    {"sqrt", b_sqrt}, {"pow", b_pow}, {"random", b_random},
+    {"replace", b_replace}, {"trim", b_trim}, {"contains", b_contains},
+    {"startswith", b_startswith}, {"endswith", b_endswith},
 };
 
 /* ---- loader ---- */
@@ -1466,6 +1612,8 @@ int main(int argc, char **argv) {
             max_secs = strtod(argv[++i], NULL);
         else if (strcmp(argv[i], "--allow-net") == 0)
             allow_net = 1;   /* opt in to network for get() / ai.ask */
+        else if (strcmp(argv[i], "--allow-fs") == 0)
+            allow_fs = 1;    /* opt in to files for readfile() / writefile() */
         else if (strcmp(argv[i], "--gc-stress") == 0)
             gc_stress = 1;   /* collect at EVERY safepoint (testing) */
         else if (strcmp(argv[i], "--gc-stats") == 0)
@@ -1474,7 +1622,8 @@ int main(int argc, char **argv) {
             path = argv[i];
         else {
             fprintf(stderr, "usage: vxvm [--max-instr N] [--max-mem BYTES]"
-                    " [--max-time SECS] [--allow-net] <program.vxc>\n");
+                    " [--max-time SECS] [--allow-net] [--allow-fs]"
+                    " <program.vxc>\n");
             return 1;
         }
     }

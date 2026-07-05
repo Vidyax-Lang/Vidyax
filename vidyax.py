@@ -937,6 +937,7 @@ import keyword
 # Runtime helpers injected into every compiled program.
 RUNTIME = '''# --- Vidyax runtime (auto-generated) ---
 import os as _os, json as _json, urllib.request as _ureq, urllib.error as _uerr
+import math as _math, random as _random
 
 class _VidyaxRuntime(Exception): pass
 
@@ -1116,6 +1117,80 @@ def _b_get(url):
     except Exception as e:
         raise _VidyaxRuntime("get() failed: %s" % e)
 
+def _b_readfile(path):
+    try:
+        with open(str(path), "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError as e:
+        raise _VidyaxRuntime("readfile() failed: %s" % (e.strerror or e))
+
+def _b_writefile(path, txt):
+    try:
+        with open(str(path), "w", encoding="utf-8") as f:
+            f.write(_vstr(txt))
+        return None
+    except OSError as e:
+        raise _VidyaxRuntime("writefile() failed: %s" % (e.strerror or e))
+
+def _num_arg(fname, x):
+    if isinstance(x, bool) or not isinstance(x, (int, float)):
+        raise _VidyaxRuntime("%s() needs a number" % fname)
+    return x
+
+def _b_floor(x): return _math.floor(_num_arg("floor", x))
+def _b_ceil(x):  return _math.ceil(_num_arg("ceil", x))
+
+def _b_round(x, nd=0):
+    # Half away from zero (what beginners expect), NOT Python's banker's
+    # rounding — and the exact formula the VM uses, so both engines agree.
+    _num_arg("round", x); nd = int(_num_arg("round", nd))
+    if nd < 0:
+        raise _VidyaxRuntime("round() digits must be 0 or more")
+    m = 10.0 ** nd
+    v = x * m
+    r = _math.floor(v + 0.5) if v >= 0 else _math.ceil(v - 0.5)
+    return r / m if nd > 0 else int(r / m)
+
+def _b_sqrt(x):
+    if _num_arg("sqrt", x) < 0:
+        raise _VidyaxRuntime("sqrt() needs a number >= 0")
+    return _math.sqrt(x)
+
+def _b_pow(x, y):
+    try:
+        r = float(_num_arg("pow", x)) ** float(_num_arg("pow", y))
+    except Exception:
+        raise _VidyaxRuntime("pow() result is not a number")
+    if _math.isnan(r) or _math.isinf(r):
+        raise _VidyaxRuntime("pow() result is not a number")
+    return r
+
+def _b_random(*a):
+    if len(a) == 0:
+        return _random.random()
+    if len(a) == 2:
+        lo, hi = int(_num_arg("random", a[0])), int(_num_arg("random", a[1]))
+        if lo > hi:
+            raise _VidyaxRuntime("random(a, b) needs a <= b")
+        return _random.randint(lo, hi)
+    raise _VidyaxRuntime("random() takes no values, or two whole numbers")
+
+def _b_replace(s, old, new):
+    old = _vstr(old)
+    if old == "":
+        raise _VidyaxRuntime("replace() needs a non-empty text to find")
+    return str(s).replace(old, _vstr(new))
+
+def _b_trim(s): return str(s).strip()
+
+def _b_contains(x, item):
+    if isinstance(x, list): return item in x
+    if isinstance(x, str):  return _vstr(item) in x
+    raise _VidyaxRuntime("contains() needs a list or text")
+
+def _b_startswith(s, p): return str(s).startswith(_vstr(p))
+def _b_endswith(s, p):   return str(s).endswith(_vstr(p))
+
 def _errtext(e):
     # Normalize Python error text into Vidyax-style wording. Used by BOTH
     # engines (try/catch + top-level reporting), so messages always match.
@@ -1154,6 +1229,13 @@ BUILTINS = {
     "sum": _RT_NS["_b_sum"], "min": _RT_NS["_b_min"],
     "max": _RT_NS["_b_max"], "type": _RT_NS["_b_type"],
     "get": _RT_NS["_b_get"],
+    "readfile": _RT_NS["_b_readfile"], "writefile": _RT_NS["_b_writefile"],
+    "floor": _RT_NS["_b_floor"], "ceil": _RT_NS["_b_ceil"],
+    "round": _RT_NS["_b_round"], "sqrt": _RT_NS["_b_sqrt"],
+    "pow": _RT_NS["_b_pow"], "random": _RT_NS["_b_random"],
+    "replace": _RT_NS["_b_replace"], "trim": _RT_NS["_b_trim"],
+    "contains": _RT_NS["_b_contains"],
+    "startswith": _RT_NS["_b_startswith"], "endswith": _RT_NS["_b_endswith"],
 }
 BUILTIN_NAMES = set(BUILTINS)
 

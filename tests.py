@@ -69,6 +69,28 @@ CASES = [
     ('use ai\nai.open "openai:gpt-4o-mini"\nprint ai.provider + " " + ai.model\n', "openai gpt-4o-mini\n"),
     ('use ai\nai.open "openai:gpt-4o-mini"\nai.open "gpt-4o"\nprint ai.provider + " " + ai.model\n', "openai gpt-4o\n"),
     ('use ai\nai.system "abc"\nprint ai.system_prompt\n', "abc\n"),
+    # stdlib: math
+    ('print floor(3.7)\nprint floor(-1.5)\n', "3\n-2\n"),
+    ('print ceil(3.2)\nprint ceil(-1.5)\n', "4\n-1\n"),
+    ('print round(2.5)\nprint round(-2.5)\nprint round(2.4)\n', "3\n-3\n2\n"),
+    ('print round(3.14159, 2)\nprint round(3.14159, 3)\n', "3.14\n3.142\n"),
+    ('print sqrt(16)\nprint sqrt(2.25)\n', "4\n1.5\n"),
+    ('print pow(2, 10)\nprint pow(9, 0.5)\n', "1024\n3\n"),
+    ('r: random(1, 6)\nprint r >= 1 and r <= 6\n', "true\n"),
+    ('r: random()\nprint r >= 0 and r < 1\n', "true\n"),
+    ('print random(3, 3)\n', "3\n"),
+    # stdlib: string
+    ('print replace("halo dunia", "dunia", "vx")\n', "halo vx\n"),
+    ('print replace("aaa", "a", "bb")\n', "bbbbbb\n"),
+    ('print trim("  hai  ")\nprint trim("x")\n', "hai\nx\n"),
+    ('print contains("vidyax", "dy")\nprint contains("vidyax", "zz")\n', "true\nfalse\n"),
+    ('print contains([1, 2, 3], 2)\nprint contains([1, 2], 9)\n', "true\nfalse\n"),
+    ('print contains(["a", "b"], "b")\n', "true\n"),
+    ('print startswith("vidyax", "vid")\nprint startswith("vidyax", "dya")\n', "true\nfalse\n"),
+    ('print endswith("vidyax", "yax")\nprint endswith("vidyax", "vid")\n', "true\nfalse\n"),
+    # stdlib: files (the VM needs --allow-fs; tests_vm.py passes it)
+    ('writefile("/tmp/vx_selftest.txt", "abc")\nprint readfile("/tmp/vx_selftest.txt")\n', "abc\n"),
+    ('print writefile("/tmp/vx_selftest.txt", 123)\nprint readfile("/tmp/vx_selftest.txt")\n', "null\n123\n"),
 ]
 
 # --- cases that must FAIL on both engines, with the SAME error text ---
@@ -88,6 +110,14 @@ ERROR_CASES = [
     ('return 1\n', "'return' only works inside a function"),
     ('x: 5\nx()\n', "this is not a function"),
     ('func f(a):\n    return a\nprint f(1, 2)\n', "needs 1 args"),
+    ('print sqrt(-4)\n', "sqrt() needs a number >= 0"),
+    ('print floor("a")\n', "floor() needs a number"),
+    ('print round(1.5, -1)\n', "round() digits must be 0 or more"),
+    ('print random(9)\n', "random() takes no values, or two whole numbers"),
+    ('print random(6, 1)\n', "random(a, b) needs a <= b"),
+    ('print replace("abc", "", "x")\n', "replace() needs a non-empty text to find"),
+    ('print contains(5, 1)\n', "contains() needs a list or text"),
+    ('print readfile("/definitely/missing/vx.txt")\n', "readfile() failed"),
 ]
 
 # --- runtime errors must report the ORIGINAL .vx line (source map). Checked

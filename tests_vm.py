@@ -19,6 +19,8 @@ from tests import CASES, ERROR_CASES
 VM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vm", "vxvm")
 # extra flags, e.g.: VXVM_FLAGS="--gc-stress" python3 tests_vm.py
 VM_FLAGS = os.environ.get("VXVM_FLAGS", "").split()
+# the shared file-op cases from tests.py need file access in the VM
+VM_FLAGS += ["--allow-fs"]
 
 # The VM runs `use ai` and member access. Only skip cases that would hit
 # the network (ai.ask / a reachable get()), which needs credentials.
@@ -92,7 +94,21 @@ def main():
             passed += 1
             print(f"  PASS vm-err {i} (#{base+i})")
 
-    total = len(CASES) + len(ERROR_CASES)
+    # sandbox: without --allow-fs the VM must refuse file access
+    saved = VM_FLAGS[:]
+    try:
+        VM_FLAGS.remove("--allow-fs")
+        out, err = run_vm('print readfile("/tmp/vx_selftest.txt")\n')
+    finally:
+        VM_FLAGS[:] = saved
+    if err is not None and "file access is not allowed" in err:
+        passed += 1
+        print("  PASS vm-sandbox fs-deny")
+    else:
+        failed += 1
+        print(f"  FAIL vm-sandbox fs-deny: out={out!r} err={err!r}")
+
+    total = len(CASES) + len(ERROR_CASES) + 1
     print(f"\nVM: {passed} passed, {failed} failed, {skipped} skipped "
           f"(network — ai.ask) of {total}")
     if failed:
