@@ -10,3 +10,4 @@ loop.vx
 .DS_Store
 vm/vxvm
 *.vxc
+.claude/
