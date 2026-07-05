@@ -1,0 +1,31 @@
+# Chatbot AI — ngobrol dengan model lewat modul `ai`.
+#
+# Jalankan (butuh GROQ_API_KEY di environment):
+#   vidyax contoh/chatbot.vx
+# Atau di VM (jaringan + file digate flag):
+#   vidyax bytecode contoh/chatbot.vx
+#   vxvm --allow-net --allow-fs contoh/chatbot.vxc
+
+use ai
+ai.system "Kamu asisten ramah berbahasa Indonesia. Jawab singkat dan jelas."
+
+print "Chatbot Vidyax — ketik 'udahan' untuk selesai."
+log: []
+
+rpt 1000:
+    q: trim(ask "kamu>")
+    if q == "":
+        continue
+    if q == "udahan":
+        break
+    try:
+        jawab: ai.ask q
+        print "bot> " + jawab
+        push(log, "kamu: " + q)
+        push(log, "bot : " + jawab)
+    catch e:
+        print "gagal: " + e
+
+if len(log) > 0:
+    writefile("/tmp/chat_vidyax.txt", join(log, "\n"))
+    print "obrolan tersimpan di /tmp/chat_vidyax.txt"

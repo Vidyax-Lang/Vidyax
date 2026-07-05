@@ -6,13 +6,10 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 
 ## Prioritas berikutnya
 
-1. **`ai.ask` live**
-   - Uji pakai GROQ_API_KEY beneran, bikin contoh program AI di `contoh/`.
+1. **VS Code**: ikon file .vx khusus + publish extension ke Marketplace (butuh Node.js + vsce).
 
 ## Ide lain (belum diprioritaskan)
 
-- Ikon file .vx khusus di VS Code.
-- Publish extension ke VS Code Marketplace (butuh Node.js + vsce).
 - Optimizer lanjutan: inlining, escape analysis untuk alokasi, IR/SSA formal.
 - Native backend (sekarang baru VM bytecode).
 - Concurrency, package manager, LSP, debugger (target jangka panjang).
@@ -21,6 +18,9 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 
 ### v1.2
 
+- ~~`ai.ask` live~~ -> diuji dengan GROQ_API_KEY asli di KETIGA engine (walk, fast,
+  VM `--allow-net`); contoh baru `contoh/chatbot.vx` (chat loop + simpan transkrip
+  pakai stdlib file).
 - ~~REPL: blok multi-baris yang lebih mulus~~ ->
   - Blok (`if:`/`func:`/`try:`) otomatis lanjut di prompt `... `, dieksekusi saat baris kosong.
   - Baris kosong TIDAK mengeksekusi blok yang belum lengkap (`try:` nunggu `catch:`-nya).
