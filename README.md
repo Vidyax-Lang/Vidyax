@@ -7,11 +7,11 @@
 *"Code as simple as writing instructions."*
 
 [![Rating](https://img.shields.io/visual-studio-marketplace/stars/nadev.vidyax?color=gold)](https://marketplace.visualstudio.com/items?itemName=nadev.vidyax)
-[![License](https://img.shields.io/github/license/daffa2555/Vidyax?color=blue)](https://github.com/daffa2555/Vidyax/blob/main/LICENSE)
-[![GitHub Stars](https://img.shields.io/github/stars/daffa2555/Vidyax?style=social)](https://github.com/daffa2555/Vidyax/stargazers)
-[![Docs](https://img.shields.io/badge/docs-online-8A2BE2)](https://daffa2555.github.io/Vidyax/)
+[![License](https://img.shields.io/github/license/Vidyax-Lang/Vidyax?color=blue)](https://github.com/Vidyax-Lang/Vidyax/blob/main/LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/Vidyax-Lang/Vidyax?style=social)](https://github.com/Vidyax-Lang/Vidyax/stargazers)
+[![Docs](https://img.shields.io/badge/docs-online-8A2BE2)](https://vidyax-lang.github.io/Vidyax/)
 
-[Documentation](https://vidyax-lang.github.io/Vidyax/) · [Report a Bug](https://github.com/daffa2555/Vidyax/issues) · [Request a Feature](https://github.com/daffa2555/Vidyax/issues)
+[Documentation](https://vidyax-lang.github.io/Vidyax/) · [Report a Bug](https://github.com/Vidyax-Lang/Vidyax/issues) · [Request a Feature](https://github.com/Vidyax-Lang/Vidyax/issues)
 
 </div>
 
@@ -121,7 +121,7 @@ Vidyax requires **GCC** (or any C99-compatible compiler), **Make**, and **Python
 **1. Clone the repository**
 
 ```bash
-git clone https://github.com/daffa2555/Vidyax.git
+git clone https://github.com/Vidyax-Lang/Vidyax.git
 cd Vidyax
 ```
 
@@ -178,11 +178,11 @@ You can also install it directly from the [Visual Studio Marketplace](https://ma
 
 ## Contributing
 
-Contributions, bug reports, and feature requests are welcome. Feel free to open an [issue](https://github.com/daffa2555/Vidyax/issues) or submit a pull request. Every new language feature is expected to pass the differential test suite, ensuring all engines remain consistent.
+Contributions, bug reports, and feature requests are welcome. Feel free to open an [issue](https://github.com/Vidyax-Lang/Vidyax/issues) or submit a pull request. Every new language feature is expected to pass the differential test suite, ensuring all engines remain consistent.
 
 ## License
 
-This project is licensed under the terms specified in the [LICENSE](https://github.com/daffa2555/Vidyax/blob/main/LICENSE) file.
+This project is licensed under the terms specified in the [LICENSE](https://github.com/Vidyax-Lang/Vidyax/blob/main/LICENSE) file.
 
 ---
 

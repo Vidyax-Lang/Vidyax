@@ -2,9 +2,9 @@ site_name: Vidyax
 site_description: A programming language as simple as writing instructions — with its own interpreter, compiler, and virtual machine.
 site_author: NaDev (Daf)
 # Ganti kalau username/repo GitHub kamu berbeda:
-site_url: https://daffa2555.github.io/Vidyax/
-repo_url: https://github.com/daffa2555/Vidyax
-repo_name: daffa2555/Vidyax
+site_url: https://vidyax-lang.github.io/Vidyax/
+repo_url: https://github.com/Vidyax-Lang/Vidyax
+repo_name: Vidyax-Lang/Vidyax
 
 theme:
   name: material
