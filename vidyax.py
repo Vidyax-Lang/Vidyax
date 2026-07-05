@@ -1593,10 +1593,25 @@ def _repl_exec(interp, src):
         print(VidyaxError(RT["_errtext"](e), kind=_runtime_kind(e)).show())
 
 
+def _repl_incomplete(src):
+    """True if `src` parses as an UNFINISHED block — more lines can still
+    complete it (e.g. `if x:` with no body yet, or `try:` without its
+    `catch`). Real mistakes (bad tokens, unknown names) return False so
+    they are reported immediately instead of swallowing more input."""
+    try:
+        _typecheck(_parse_source(src if src.endswith("\n") else src + "\n"))
+        return False
+    except VidyaxError as e:
+        return ("the end of the program" in e.msg
+                or "must be followed by 'catch'" in e.msg)
+    except Exception:
+        return False
+
+
 def repl():
     print(f"Vidyax v{VERSION} REPL")
-    print("  one-liners:  func sq(n): return n * n   then   sq(12)")
-    print("  blocks:      type lines, end with a blank line.  Ctrl-D to exit")
+    print("  blocks:  end with a blank line to run.  Ctrl-C cancels a block,")
+    print("           Ctrl-D exits")
     interp = Interpreter()
     pending = []
     while True:
@@ -1605,19 +1620,34 @@ def repl():
         except EOFError:
             print()
             break
+        except KeyboardInterrupt:
+            # ^C drops the half-typed block but keeps the session alive
+            print()
+            pending = []
+            continue
         if pending:
             if line.strip() == "":
-                _repl_exec(interp, "\n".join(pending))
+                src = "\n".join(pending)
+                if _repl_incomplete(src):
+                    continue   # e.g. `try:` still waiting for its `catch`
+                try:
+                    _repl_exec(interp, src)
+                except KeyboardInterrupt:
+                    print("\n[Vidyax] stopped")
                 pending = []
             else:
                 pending.append(line)
             continue
         if line.strip() == "":
             continue
-        if line.rstrip().endswith(":"):
-            pending = [line]   # start a block; finish it with a blank line
+        # a trailing ':' *or* any still-unfinished construct opens a block
+        if line.rstrip().endswith(":") or _repl_incomplete(line):
+            pending = [line]
             continue
-        _repl_exec(interp, line)
+        try:
+            _repl_exec(interp, line)
+        except KeyboardInterrupt:
+            print("\n[Vidyax] stopped")
 
 
 def main():

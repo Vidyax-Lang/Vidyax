@@ -11,6 +11,9 @@ paths from silently drifting apart again.
 """
 import io
 import contextlib
+import os
+import subprocess
+import sys
 import vidyax
 
 ENGINES = [("walk", vidyax.run_text), ("fast", vidyax.run_fast_text)]
@@ -141,6 +144,22 @@ CATEGORY_CASES = [
     ('x: 5\nx()\n', "runtime error"),     # calling a non-function
 ]
 
+# --- REPL: fed to `vidyax` over stdin as if typed. Each case is
+# (typed_input, must_appear_in_output, must_NOT_appear_in_output) ---
+REPL_CASES = [
+    # a block runs when closed with a blank line
+    ('if 5 > 3:\n    print "yes"\n\n', ["yes"], []),
+    # `try:` is NOT executed at the blank line — it waits for its `catch`
+    ('try:\n    x: 1 / 0\n\ncatch e:\n    print "ok " + e\n\n',
+     ["ok cannot divide by 0"], ["must be followed"]),
+    # a func defined across lines is callable afterwards
+    ('func sq(n):\n    return n * n\n\nsq(6)\n', ["36"], []),
+    # bare expressions echo their value
+    ('1 + 2\n', ["3"], []),
+    # real mistakes surface immediately, they don't open a silent block
+    ('print zzz\n', ["variable 'zzz' is not defined"], []),
+]
+
 
 def run_all_tests():
     passed = failed = 0
@@ -220,8 +239,26 @@ def run_all_tests():
             passed += 1
             print(f"  PASS cat-test {i} (#{base3 + i})")
 
+    base4 = base3 + len(CATEGORY_CASES)
+    vx = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vidyax.py")
+    for i, (typed, want_in, want_out) in enumerate(REPL_CASES, 1):
+        r = subprocess.run([sys.executable, vx], input=typed,
+                           capture_output=True, text=True, timeout=30)
+        out = r.stdout + r.stderr
+        problems = [f"missing {s!r}" for s in want_in if s not in out]
+        problems += [f"unexpected {s!r}" for s in want_out if s in out]
+        if r.returncode != 0:
+            problems.append(f"repl exited {r.returncode}")
+        if problems:
+            failed += 1
+            print(f"  FAIL repl-test {i} (#{base4 + i}): "
+                  + " | ".join(problems) + f" (output={out!r})")
+        else:
+            passed += 1
+            print(f"  PASS repl-test {i} (#{base4 + i})")
+
     total = (len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
-             + len(CATEGORY_CASES))
+             + len(CATEGORY_CASES) + len(REPL_CASES))
     print(f"\n{passed}/{total} tests passed (each on BOTH engines)")
     if failed:
         raise SystemExit(1)

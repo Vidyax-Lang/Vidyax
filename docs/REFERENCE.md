@@ -282,7 +282,15 @@ the required environment variable.
 | `vidyax test`            | run the built-in tests (both engines) |
 | `vidyax <file.vx>`       | same as `run` |
 
-Running with no arguments opens the interactive REPL.
+Running with no arguments opens the interactive REPL:
+
+- A line that opens a block (`if x:`, `func f():`, `try:`, …) switches to
+  the `... ` continuation prompt; keep typing the block's lines.
+- A **blank line** runs the block — unless it is still unfinished (a
+  `try:` waits for its `catch:` before running).
+- A bare expression echoes its value, like a calculator.
+- **Ctrl-C** cancels a half-typed block or stops a running program
+  without leaving the REPL; **Ctrl-D** exits.
 
 Roadmap commands (recognized but not yet runnable): `fmt`, `install`, and
 the keywords `agent`, `go`, `use web`, `use database`.
