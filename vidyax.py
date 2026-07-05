@@ -1098,14 +1098,30 @@ def _rt(fn, line, *args):
         raise VidyaxError(str(e), line)
 
 
+def _stmt_line(n):
+    """Best source line for a statement. Statement nodes don't carry a line,
+    but their expression children (which are where runtime errors fire) do."""
+    ln = getattr(n, "line", None)
+    if ln:
+        return ln
+    for attr in ("value", "expr", "cond", "count", "iterable", "prompt"):
+        ln = getattr(getattr(n, attr, None), "line", None)
+        if ln:
+            return ln
+    return None
+
+
 class Transpiler:
     """Turn a Vidyax AST into Python source code."""
     def __init__(self):
         self.lines = []
+        self.linemap = []      # parallel to self.lines: source .vx line per output line
+        self.cur_line = 0      # .vx line of the statement being emitted
         self.rpt_counter = 0
 
     def emit(self, indent, text):
         self.lines.append("    " * indent + text)
+        self.linemap.append(self.cur_line)
 
     def transpile(self, program):
         self.block(program.body, 1)  # body lives inside _main()
@@ -1123,6 +1139,9 @@ class Transpiler:
     # --- statements ---
     def stmt(self, n, indent):
         t = type(n).__name__
+        # remember the source line so every line emitted for this statement
+        # maps back to the original .vx for runtime-error reporting
+        self.cur_line = _stmt_line(n) or self.cur_line
         if t == "Assign":
             self.emit(indent, f"{_pyname(n.name)} = {self.expr(n.value)}")
         elif t == "Print":
@@ -1176,6 +1195,7 @@ class Transpiler:
         # elif chain comes through as a single nested If
         if len(orelse) == 1 and type(orelse[0]).__name__ == "If":
             inner = orelse[0]
+            self.cur_line = _stmt_line(inner) or self.cur_line
             self.emit(indent, f"elif {self.expr(inner.cond)}:")
             self.block(inner.body, indent + 1)
             self._tail_else(inner.orelse, indent)
@@ -1226,35 +1246,69 @@ class Transpiler:
         raise VidyaxError(f"cannot compile expression {t}")
 
 
-def compile_to_python(source, standalone=True):
-    """Vidyax source -> Python source string."""
+def _transpile_program(source, standalone=True):
+    """Vidyax source -> (Python source string, {python_line: vx_line}).
+
+    The line map lets the fast path translate a runtime traceback back to
+    the original .vx line (the generated Python is compiled as <vidyax>)."""
     tokens = lex(source)
     ast = Parser(tokens).parse()
     type_check(ast)
-    body = Transpiler().transpile(ast)
-    parts = []
+    tr = Transpiler()
+    body = tr.transpile(ast)
+
+    header = []
     if standalone:
-        parts.append("#!/usr/bin/env python3")
-    parts.append(RUNTIME)
-    parts.append("def _main():")
-    parts.append(body)
-    parts.append("")
-    parts.append("if __name__ == '__main__':")
-    parts.append("    import sys as _sys")
-    parts.append("    try:")
-    parts.append("        _main()")
-    parts.append("    except _VidyaxRuntime as _e:")
-    parts.append("        print('[Vidyax] ' + str(_e)); _sys.exit(1)")
-    parts.append("    except Exception as _e:")
-    parts.append("        print('[Vidyax] ' + _errtext(_e)); _sys.exit(1)")
-    return "\n".join(parts) + "\n"
+        header.append("#!/usr/bin/env python3")
+    header.append(RUNTIME)
+    header.append("def _main():")
+    header_str = "\n".join(header)
+    offset = header_str.count("\n") + 1   # number of lines before the body
+
+    footer = "\n".join([
+        "",
+        "if __name__ == '__main__':",
+        "    import sys as _sys",
+        "    try:",
+        "        _main()",
+        "    except _VidyaxRuntime as _e:",
+        "        print('[Vidyax] ' + str(_e)); _sys.exit(1)",
+        "    except Exception as _e:",
+        "        print('[Vidyax] ' + _errtext(_e)); _sys.exit(1)",
+    ])
+    py = header_str + "\n" + body + "\n" + footer + "\n"
+    # body line i (0-based) lands on python line offset + i + 1
+    linemap = {offset + i + 1: vx for i, vx in enumerate(tr.linemap) if vx}
+    return py, linemap
+
+
+def compile_to_python(source, standalone=True):
+    """Vidyax source -> Python source string."""
+    py, _ = _transpile_program(source, standalone)
+    return py
+
+
+def _vx_line(tb, linemap):
+    """Walk a traceback and return the .vx line of the deepest frame in the
+    generated <vidyax> source that maps to a real statement. Runtime-helper
+    frames (inside RUNTIME) aren't in the map, so they're skipped — the
+    result is the user's own line, not the helper's."""
+    line = None
+    while tb is not None:
+        f = tb.tb_frame
+        if f.f_code.co_filename == "<vidyax>":
+            mapped = linemap.get(tb.tb_lineno)
+            if mapped:
+                line = mapped
+        tb = tb.tb_next
+    return line
 
 
 def run_fast_text(source):
     """Transpile to Python and execute in-memory (the fast path).
     Raises VidyaxError on failure — used by the CLI and by the
     differential tests, which run every case through BOTH engines."""
-    py = compile_to_python(source, standalone=False)
+    py, linemap = _transpile_program(source, standalone=False)
     ns = {"__name__": "_vax_main"}
     exec(compile(py, "<vidyax>", "exec"), ns)
     try:
@@ -1262,12 +1316,13 @@ def run_fast_text(source):
     except VidyaxError:
         raise
     except Exception as e:
+        line = _vx_line(e.__traceback__, linemap)
         # _VidyaxRuntime is defined inside ns (fresh class per program)
         if type(e).__name__ == "_VidyaxRuntime":
-            raise VidyaxError(str(e))
+            raise VidyaxError(str(e), line)
         # dynamic runtime errors the static type_check() pass couldn't
         # see — report them Vidyax-style instead of a raw traceback
-        raise VidyaxError(ns["_errtext"](e))
+        raise VidyaxError(ns["_errtext"](e), line)
 
 
 def run_fast(source):

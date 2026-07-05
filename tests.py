@@ -90,6 +90,16 @@ ERROR_CASES = [
     ('func f(a):\n    return a\nprint f(1, 2)\n', "needs 1 args"),
 ]
 
+# --- runtime errors must report the ORIGINAL .vx line (source map). Checked
+# on BOTH engines: the walker carries lines natively, the fast path maps the
+# generated-Python traceback back through its line table. (src, expected_line)
+LINE_CASES = [
+    ('x: 10\ny: 0\nz: x / y\n', 3),                    # divide by zero
+    ('nums: [1, 2, 3]\nprint nums[10]\n', 2),          # index out of range
+    ('func bad(n):\n    return n / 0\nprint bad(5)\n', 2),  # error inside a func
+    ('a: 1\nfor i in [1, 2]:\n    c: a / 0\n', 3),     # error in a loop body
+]
+
 
 def run_all_tests():
     passed = failed = 0
@@ -130,7 +140,27 @@ def run_all_tests():
             passed += 1
             print(f"  PASS err-test {i} (#{base + i})")
 
-    total = len(CASES) + len(ERROR_CASES)
+    base2 = len(CASES) + len(ERROR_CASES)
+    for i, (src, want_line) in enumerate(LINE_CASES, 1):
+        marker = f"line {want_line}:"
+        problems = []
+        for name, fn in ENGINES:
+            try:
+                fn(src)
+                problems.append(f"{name} did not error")
+            except vidyax.VidyaxError as e:
+                if marker not in e.show():
+                    problems.append(f"{name} show()={e.show()!r} missing {marker!r}")
+            except Exception as e:
+                problems.append(f"{name} raised {type(e).__name__}: {e}")
+        if problems:
+            failed += 1
+            print(f"  FAIL line-test {i} (#{base2 + i}): " + " | ".join(problems))
+        else:
+            passed += 1
+            print(f"  PASS line-test {i} (#{base2 + i})")
+
+    total = len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
     print(f"\n{passed}/{total} tests passed (each on BOTH engines)")
     if failed:
         raise SystemExit(1)
