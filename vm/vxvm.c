@@ -11,7 +11,8 @@
  *
  * `use ai`, member access and get() are live: the ai module mirrors the
  * Python engines' implementation and ai.ask()/get() perform real HTTP via
- * libcurl. Build without libcurl (make CURL=0) and those two raise a
+ * libcurl. Network is denied by default (sandbox policy) — pass --allow-net
+ * to enable it. Build without libcurl (make CURL=0) and those two raise a
  * catchable error instead.
  *
  * Build:  make            (auto-detects libcurl via pkg-config)
@@ -124,6 +125,7 @@ static char    errmsg[1024];
 static uint64_t max_instr = 0, instr_count = 0;
 static size_t   max_mem = 0,  mem_used = 0;
 static double   max_secs = 0; static clock_t start_clock;
+static int      allow_net = 0;   /* network (get/ai.ask) denied unless --allow-net */
 
 /* ---- GC (blueprint Bab 5): mark-sweep at safepoints ---- */
 static size_t   next_gc = 1u << 20;   /* first collection at 1 MB */
@@ -609,6 +611,9 @@ static OBound *new_bound(OAI *self, int method) {
     return b;
 }
 static Value ai_ask(OAI *self, OStr *prompt) {
+    if (!allow_net)
+        vm_error("network access is not allowed "
+                 "(pass --allow-net to enable ai.ask / get)");
 #ifndef VX_HAVE_CURL
     (void)self; (void)prompt;
     vm_error("ai.ask needs libcurl (rebuild vxvm with libcurl available)");
@@ -858,6 +863,9 @@ static Value b_type(int argc, Value *a) {
     return vstr_o(new_str(n, (uint32_t)strlen(n)));
 }
 static Value b_get(int argc, Value *a) {
+    if (!allow_net)
+        vm_error("network access is not allowed "
+                 "(pass --allow-net to enable ai.ask / get)");
 #ifndef VX_HAVE_CURL
     (void)argc; (void)a;
     vm_error("get() needs libcurl (rebuild vxvm with libcurl available)");
@@ -1456,6 +1464,8 @@ int main(int argc, char **argv) {
             max_mem = (size_t)strtoull(argv[++i], NULL, 10);
         else if (strcmp(argv[i], "--max-time") == 0 && i + 1 < argc)
             max_secs = strtod(argv[++i], NULL);
+        else if (strcmp(argv[i], "--allow-net") == 0)
+            allow_net = 1;   /* opt in to network for get() / ai.ask */
         else if (strcmp(argv[i], "--gc-stress") == 0)
             gc_stress = 1;   /* collect at EVERY safepoint (testing) */
         else if (strcmp(argv[i], "--gc-stats") == 0)
@@ -1464,7 +1474,7 @@ int main(int argc, char **argv) {
             path = argv[i];
         else {
             fprintf(stderr, "usage: vxvm [--max-instr N] [--max-mem BYTES]"
-                    " [--max-time SECS] <program.vxc>\n");
+                    " [--max-time SECS] [--allow-net] <program.vxc>\n");
             return 1;
         }
     }

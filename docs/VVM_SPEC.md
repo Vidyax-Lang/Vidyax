@@ -111,10 +111,10 @@ vxvm --max-instr 50000000 --max-mem 268435456 --max-time 5 prog.vxc
 - **Memory limit** — a count of **bytes** allocated (not object count),
   with every allocation path (malloc + realloc) tracked.
 - **Time limit** — CPU time, checked every 4096 instructions.
-- **Permission control** — milestone 1 satisfies this naturally: the VVM
-  has no file system / network / subprocess opcodes at all. When
-  `get`/`ai` arrive (milestone 4), both must sit behind an explicit
-  permission flag.
+- **Permission control** — the VVM has no file system or subprocess
+  opcodes. The only outbound capability is HTTP (`get()` and `ai.ask`),
+  and it sits behind an explicit **`--allow-net`** flag: denied by
+  default, both raise a catchable error unless the flag is passed.
 - **Bytecode verification** — before execution: valid opcodes,
   non-truncated operands, in-range constant/proto indices, LOAD/STORE
   pointing at text constants, and every jump target landing exactly on an
@@ -152,7 +152,7 @@ completion under `--max-mem 4000000` — 50 collections, peak ~1 MB.
 | 1 | Core language on the C VM, VIR verification, sandbox limits, differential tests | **done** — 40/40 supported cases identical to both Python engines |
 | 2 | Mark-sweep GC + gc-stress + ASan verification | **done** |
 | 3 | Optimizing compiler: constant folding **(done)**; slot-based locals, dead-code elimination, peephole (next) | in progress |
-| 4 | `get`/`ai` via libcurl + permission flags | pending |
+| 4 | `get`/`ai` via libcurl + `--allow-net` permission flag | **done** |
 | 5 | Orchestrator / automatic multi-engine dispatch | vision |
 
 Benchmark (fib(27), same machine): walk 4.46s → transpiler 0.21s →
