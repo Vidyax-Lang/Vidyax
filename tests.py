@@ -100,6 +100,17 @@ LINE_CASES = [
     ('a: 1\nfor i in [1, 2]:\n    c: a / 0\n', 3),     # error in a loop body
 ]
 
+# --- errors must be CATEGORIZED (syntax / name / type / runtime) so beginners
+# know what kind of problem they hit. Checked on BOTH engines. (src, label)
+CATEGORY_CASES = [
+    ('print 1 2\n', "syntax error"),      # extra tokens -> parse fails
+    ('x: 1 +\n', "syntax error"),         # unfinished expression
+    ('print y\n', "name error"),          # undefined variable
+    ('x: 5 - "a"\n', "type error"),       # arithmetic on text (static)
+    ('x: 1 / 0\n', "runtime error"),      # divide by zero (only known at run)
+    ('x: 5\nx()\n', "runtime error"),     # calling a non-function
+]
+
 
 def run_all_tests():
     passed = failed = 0
@@ -160,7 +171,27 @@ def run_all_tests():
             passed += 1
             print(f"  PASS line-test {i} (#{base2 + i})")
 
-    total = len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
+    base3 = len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
+    for i, (src, label) in enumerate(CATEGORY_CASES, 1):
+        problems = []
+        for name, fn in ENGINES:
+            try:
+                fn(src)
+                problems.append(f"{name} did not error")
+            except vidyax.VidyaxError as e:
+                if label not in e.show():
+                    problems.append(f"{name} show()={e.show()!r} missing {label!r}")
+            except Exception as e:
+                problems.append(f"{name} raised {type(e).__name__}: {e}")
+        if problems:
+            failed += 1
+            print(f"  FAIL cat-test {i} (#{base3 + i}): " + " | ".join(problems))
+        else:
+            passed += 1
+            print(f"  PASS cat-test {i} (#{base3 + i})")
+
+    total = (len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
+             + len(CATEGORY_CASES))
     print(f"\n{passed}/{total} tests passed (each on BOTH engines)")
     if failed:
         raise SystemExit(1)

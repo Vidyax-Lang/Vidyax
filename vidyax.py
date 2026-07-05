@@ -53,16 +53,50 @@ class Token:
 
 
 class VidyaxError(Exception):
-    """User-friendly error for Vidyax programs."""
-    def __init__(self, msg, line=None):
+    """User-friendly error for Vidyax programs.
+
+    kind categorizes the problem so beginners know what to look for:
+      "syntax"  — the code is written wrong (typo, missing/extra token)
+      "name"    — a variable or name that isn't defined (yet)
+      "type"    — using a value the wrong way (e.g. math on text)
+      "runtime" — something went wrong while running (e.g. divide by 0)
+    """
+    _LABELS = {"syntax": "syntax error", "name": "name error",
+               "type": "type error", "runtime": "runtime error"}
+
+    def __init__(self, msg, line=None, kind=None):
         self.msg = msg
         self.line = line
+        self.kind = kind
         super().__init__(msg)
 
     def show(self):
+        label = self._LABELS.get(self.kind)
+        head = f"{label}, " if label else ""
         if self.line:
-            return f"[Vidyax] line {self.line}: {self.msg}"
-        return f"[Vidyax] {self.msg}"
+            return f"[Vidyax] {head}line {self.line}: {self.msg}"
+        return f"[Vidyax] {head}{self.msg}"
+
+
+# Beginner-friendly names for token categories, used in syntax messages.
+_KIND_WORDS = {
+    "NEWLINE": "a new line", "NAME": "a name", "NUMBER": "a number",
+    "STRING": "some text", "OP": "a symbol", "KEYWORD": "a keyword",
+    "INDENT": "an indented block", "DEDENT": "the block to end",
+    "EOF": "the end of the program",
+}
+
+
+def _kind_word(kind):
+    return _KIND_WORDS.get(kind, kind)
+
+
+def _tok_word(t):
+    if t.kind == "NEWLINE":
+        return "the end of the line"
+    if t.kind == "EOF":
+        return "the end of the program"
+    return repr(t.value)
 
 
 def lex(source):
@@ -88,7 +122,9 @@ def lex(source):
                 indent_stack.pop()
                 tokens.append(Token("DEDENT", None, line_no))
             if indent != indent_stack[-1]:
-                raise VidyaxError("inconsistent indentation", line_no)
+                raise VidyaxError(
+                    "the indentation here doesn't line up with the block "
+                    "above — use the same number of spaces", line_no)
 
         i = 0
         n = len(raw)
@@ -251,9 +287,15 @@ class Parser:
     def eat(self, kind=None, value=None):
         t = self.peek()
         if kind and t.kind != kind:
-            raise VidyaxError(f"expected {kind}, got {t.kind} ({t.value!r})", t.line)
+            if kind == "NEWLINE":
+                raise VidyaxError(
+                    "looks like more than one command on this line — "
+                    "put each command on its own line", t.line)
+            raise VidyaxError(
+                f"expected {_kind_word(kind)}, but found {_tok_word(t)}", t.line)
         if value is not None and t.value != value:
-            raise VidyaxError(f"expected {value!r}, got {t.value!r}", t.line)
+            raise VidyaxError(
+                f"expected {value!r} here, but found {_tok_word(t)}", t.line)
         self.pos += 1
         return t
 
@@ -543,8 +585,12 @@ class Parser:
             self.eat("OP", "]")
             return ListLit(items)
         if t.kind in ("NEWLINE", "DEDENT", "EOF"):
-            raise VidyaxError("incomplete expression", t.line)
-        raise VidyaxError(f"unexpected '{t.value}'", t.line)
+            raise VidyaxError(
+                "this line looks unfinished — something is missing after here",
+                t.line)
+        raise VidyaxError(
+            f"unexpected {_tok_word(t)} here — I didn't know what to do with it",
+            t.line)
 
 
 # =====================================================================
@@ -580,9 +626,9 @@ class Environment:
             if name in env.declared:
                 raise VidyaxError(
                     f"variable '{name}' is assigned in this function "
-                    "but used before it has a value", line)
+                    "but used before it has a value", line, kind="name")
             env = env.parent
-        raise VidyaxError(f"variable '{name}' is not defined", line)
+        raise VidyaxError(f"variable '{name}' is not defined", line, kind="name")
 
     def set(self, name, value):
         self.vars[name] = value
@@ -751,7 +797,7 @@ class Interpreter:
         if n.op == "not": return not vidyax_truthy(v)
         if n.op == "-":
             if isinstance(v, bool) or not isinstance(v, (int, float)):
-                raise VidyaxError("'-' only works on numbers", n.line)
+                raise VidyaxError("'-' only works on numbers", n.line, kind="runtime")
             return -v
 
     def eval_BinOp(self, n, env):
@@ -773,7 +819,7 @@ class Interpreter:
         if n.op == ">": return l > r
         if n.op == "<=": return l <= r
         if n.op == ">=": return l >= r
-        raise VidyaxError(f"unknown operator {n.op}", n.line)
+        raise VidyaxError(f"unknown operator {n.op}", n.line, kind="runtime")
 
     def eval_Member(self, n, env):
         obj = self.eval(n.obj, env)
@@ -791,13 +837,13 @@ class Interpreter:
             return self.call_function(callee, args, n.line)
         if callable(callee):  # built-ins and ai methods (shared runtime)
             return _rt(callee, n.line, *args)
-        raise VidyaxError("this is not a function", n.line)
+        raise VidyaxError("this is not a function", n.line, kind="runtime")
 
     def call_function(self, fn, args, line):
         if len(args) != len(fn.decl.params):
             raise VidyaxError(
                 f"function '{fn.decl.name}' needs {len(fn.decl.params)} args, "
-                f"got {len(args)}", line)
+                f"got {len(args)}", line, kind="runtime")
         declared = getattr(fn.decl, "_locals", None)
         if declared is None:
             declared = assigned_names(fn.decl.body) - set(fn.decl.params)
@@ -853,6 +899,34 @@ def type_check(program):
                 raise VidyaxError(
                     f"cannot use '{node.op}' between {lt} and {rt}, "
                     "both sides must be the same type", node.line)
+
+
+# --- front-end phase boundaries: attach an error category ---
+def _parse_source(source):
+    """Lex + parse. Any failure here is the code being written wrong."""
+    try:
+        return Parser(lex(source)).parse()
+    except VidyaxError as e:
+        if e.kind is None:
+            e.kind = "syntax"
+        raise
+
+
+def _typecheck(ast):
+    """Static type pass. Failures are type errors."""
+    try:
+        type_check(ast)
+    except VidyaxError as e:
+        if e.kind is None:
+            e.kind = "type"
+        raise
+    return ast
+
+
+def _runtime_kind(exc):
+    """Classify a Python exception that escaped the generated/interpreted
+    program: undefined/uninitialized names are name errors, the rest runtime."""
+    return "name" if isinstance(exc, (NameError, UnboundLocalError)) else "runtime"
 
 # =====================================================================
 # 6. TRANSPILER  (Vidyax -> Python, for speed)
@@ -1095,7 +1169,7 @@ def _rt(fn, line, *args):
     try:
         return fn(*args)
     except RTError as e:
-        raise VidyaxError(str(e), line)
+        raise VidyaxError(str(e), line, kind="runtime")
 
 
 def _stmt_line(n):
@@ -1251,9 +1325,8 @@ def _transpile_program(source, standalone=True):
 
     The line map lets the fast path translate a runtime traceback back to
     the original .vx line (the generated Python is compiled as <vidyax>)."""
-    tokens = lex(source)
-    ast = Parser(tokens).parse()
-    type_check(ast)
+    ast = _parse_source(source)
+    _typecheck(ast)
     tr = Transpiler()
     body = tr.transpile(ast)
 
@@ -1319,10 +1392,10 @@ def run_fast_text(source):
         line = _vx_line(e.__traceback__, linemap)
         # _VidyaxRuntime is defined inside ns (fresh class per program)
         if type(e).__name__ == "_VidyaxRuntime":
-            raise VidyaxError(str(e), line)
+            raise VidyaxError(str(e), line, kind="runtime")
         # dynamic runtime errors the static type_check() pass couldn't
         # see — report them Vidyax-style instead of a raw traceback
-        raise VidyaxError(ns["_errtext"](e), line)
+        raise VidyaxError(ns["_errtext"](e), line, kind=_runtime_kind(e))
 
 
 def run_fast(source):
@@ -1365,9 +1438,8 @@ def walk_file(path):
     with open(path, encoding="utf-8") as f:
         source = f.read()
     try:
-        tokens = lex(source)
-        ast = Parser(tokens).parse()
-        type_check(ast)
+        ast = _parse_source(source)
+        _typecheck(ast)
         Interpreter().run(ast)
     except VidyaxError as e:
         print(e.show())
@@ -1375,7 +1447,7 @@ def walk_file(path):
     except Exception as e:
         # catch-all: dynamic runtime errors the static type_check() pass
         # couldn't see (values only known at runtime).
-        print("[Vidyax] " + RT["_errtext"](e))
+        print(VidyaxError(RT["_errtext"](e), kind=_runtime_kind(e)).show())
         sys.exit(1)
 
 
@@ -1385,11 +1457,10 @@ def check_source(source):
     Used by editors for live error reporting."""
     errors = []
     try:
-        tokens = lex(source)
-        ast = Parser(tokens).parse()
-        type_check(ast)
+        _typecheck(_parse_source(source))
     except VidyaxError as e:
-        errors.append({"line": e.line if e.line is not None else 1, "message": e.msg})
+        errors.append({"line": e.line if e.line is not None else 1,
+                       "message": e.msg, "kind": e.kind})
     except Exception:
         # Never leak a Python traceback to the editor; just report nothing.
         return []
@@ -1413,21 +1484,19 @@ def check_file(path):
 def run_text(source):
     """Tree-walk a program. Raises VidyaxError on failure — the walker
     twin of run_fast_text, used by the REPL and the differential tests."""
-    tokens = lex(source)
-    ast = Parser(tokens).parse()
-    type_check(ast)
+    ast = _parse_source(source)
+    _typecheck(ast)
     try:
         Interpreter().run(ast)
     except VidyaxError:
         raise
     except Exception as e:
-        raise VidyaxError(RT["_errtext"](e))
+        raise VidyaxError(RT["_errtext"](e), kind=_runtime_kind(e))
 
 
 def _repl_exec(interp, src):
     try:
-        prog = Parser(lex(src)).parse()
-        type_check(prog)
+        prog = _typecheck(_parse_source(src))
         # echo the value of a single bare expression, like a calculator
         if len(prog.body) == 1 and type(prog.body[0]).__name__ == "ExprStmt":
             val = interp.eval(prog.body[0].expr, interp.global_env)
@@ -1439,7 +1508,7 @@ def _repl_exec(interp, src):
     except VidyaxError as e:
         print(e.show())
     except Exception as e:
-        print("[Vidyax] " + RT["_errtext"](e))
+        print(VidyaxError(RT["_errtext"](e), kind=_runtime_kind(e)).show())
 
 
 def repl():
