@@ -7,15 +7,20 @@
  * an error), closures by capturing the defining environment.
  *
  * Deliberately NOT here yet:
- *   - GC (all objects live until exit; Obj headers already carry the
- *     `next` link + mark bit so mark-sweep slots in as milestone 2)
- *   - use ai / member access (rejected by the compiler)
- *   - get(url)  (needs libcurl; raises a catchable error for now)
  *   - unicode-aware upper/lower/len (byte-based; fine for ASCII)
  *
- * Build:  cc -O2 -o vxvm vxvm.c -lm
+ * `use ai`, member access and get() are live: the ai module mirrors the
+ * Python engines' implementation and ai.ask()/get() perform real HTTP via
+ * libcurl. Build without libcurl (make CURL=0) and those two raise a
+ * catchable error instead.
+ *
+ * Build:  make            (auto-detects libcurl via pkg-config)
+ *         cc -O2 -DVX_HAVE_CURL -o vxvm vxvm.c -lm -lcurl
  * Run:    ./vxvm program.vxc
  */
+#ifdef VX_HAVE_CURL
+#include <curl/curl.h>
+#endif
 #include <ctype.h>
 #include <math.h>
 #include <setjmp.h>
@@ -37,10 +42,12 @@ enum {
     OP_PRINT, OP_ASK, OP_CHECK_RPT, OP_CHECK_ITER, OP_LEN,
     OP_TRY_PUSH, OP_TRY_POP, OP_HALT,
     OP_LOAD_SLOT, OP_STORE_SLOT,
+    OP_AI_NEW, OP_GET_MEMBER,
 };
 
 /* ---- values & objects ---- */
 typedef enum { V_NULL, V_BOOL, V_NUM, V_STR, V_LIST, V_FUNC, V_BUILTIN,
+               V_AI, V_BOUND, /* ai module object + bound method */
                V_UNSET /* internal: slot declared but not yet assigned */ } VType;
 typedef struct Obj Obj;
 typedef struct Value {
@@ -48,7 +55,7 @@ typedef struct Value {
     union { int b; double n; Obj *o; } as;
 } Value;
 
-typedef enum { O_STR, O_LIST, O_FUNC, O_ENV } OType;
+typedef enum { O_STR, O_LIST, O_FUNC, O_ENV, O_AI, O_BOUND } OType;
 struct Obj {           /* common header; `next`+`mark` reserved for GC */
     OType type;
     Obj  *next;
@@ -83,6 +90,12 @@ struct Env {
 };
 
 typedef struct { Obj h; Proto *proto; Env *closure; } OFunc;
+
+/* ai module object (mirrors vidyax.py _AI) + a method bound to one */
+enum { PROV_GROQ = 0, PROV_OPENAI = 1 };
+enum { AIM_OPEN = 0, AIM_SYSTEM = 1, AIM_ASK = 2 };
+typedef struct { Obj h; int provider; OStr *model; OStr *system_prompt; } OAI;
+typedef struct { Obj h; OAI *self; int method; } OBound;
 
 typedef Value (*BuiltinFn)(int argc, Value *args);
 typedef struct { const char *name; BuiltinFn fn; } Builtin;
@@ -193,9 +206,13 @@ static Value vbool(int b) { Value v; v.t = V_BOOL; v.as.b = !!b; return v; }
 static Value vnum(double n) { Value v; v.t = V_NUM; v.as.n = n; return v; }
 static Value vstr_o(OStr *s) { Value v; v.t = V_STR; v.as.o = (Obj *)s; return v; }
 static Value vlist_o(OList *l) { Value v; v.t = V_LIST; v.as.o = (Obj *)l; return v; }
+static Value vai_o(OAI *a) { Value v; v.t = V_AI; v.as.o = (Obj *)a; return v; }
+static Value vbound_o(OBound *b) { Value v; v.t = V_BOUND; v.as.o = (Obj *)b; return v; }
 #define AS_STR(v)  ((OStr *)(v).as.o)
 #define AS_LIST(v) ((OList *)(v).as.o)
 #define AS_FUNC(v) ((OFunc *)(v).as.o)
+#define AS_AI(v)   ((OAI *)(v).as.o)
+#define AS_BOUND(v) ((OBound *)(v).as.o)
 
 /* ---- environment (keys compared by pointer: const pool is deduped) ---- */
 static void env_set(Env *e, OStr *key, Value v) {
@@ -272,6 +289,12 @@ static void vstr_into(SB *sb, Value v) {
     case V_BUILTIN:
         sb_puts(sb, "<func ");
         sb_puts(sb, ((Builtin *)v.as.o)->name); sb_puts(sb, ">"); break;
+    case V_AI: sb_puts(sb, "<ai>"); break;
+    case V_BOUND: {
+        static const char *mn[] = {"open", "system", "ask"};
+        sb_puts(sb, "<func ai."); sb_puts(sb, mn[AS_BOUND(v)->method]);
+        sb_puts(sb, ">"); break;
+    }
     }
 }
 static OStr *vstr(Value v) {
@@ -382,6 +405,303 @@ static Value do_index(Value o, Value iv) {
         return vstr_o(new_str(s->chars + i, 1));
     }
     vm_error("index out of range");
+    return vnull();
+}
+
+/* ==================================================================
+ * ai module + member access + HTTP  (mirrors vidyax.py's _AI / _member
+ * / _b_get). Real requests go through libcurl; without it the two
+ * network entry points raise a catchable error.
+ * ================================================================== */
+
+/* ---- minimal JSON: escape strings out, pull one string value in ---- */
+static int is_hex(int c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+           (c >= 'A' && c <= 'F');
+}
+static unsigned hex_val(int c) {
+    if (c >= '0' && c <= '9') return (unsigned)(c - '0');
+    if (c >= 'a' && c <= 'f') return (unsigned)(c - 'a' + 10);
+    return (unsigned)(c - 'A' + 10);
+}
+static void utf8_put(SB *sb, unsigned cp) {
+    char b[4];
+    if (cp < 0x80) { b[0] = (char)cp; sb_put(sb, b, 1); }
+    else if (cp < 0x800) {
+        b[0] = (char)(0xC0 | (cp >> 6)); b[1] = (char)(0x80 | (cp & 0x3F));
+        sb_put(sb, b, 2);
+    } else if (cp < 0x10000) {
+        b[0] = (char)(0xE0 | (cp >> 12));
+        b[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        b[2] = (char)(0x80 | (cp & 0x3F)); sb_put(sb, b, 3);
+    } else {
+        b[0] = (char)(0xF0 | (cp >> 18));
+        b[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        b[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        b[3] = (char)(0x80 | (cp & 0x3F)); sb_put(sb, b, 4);
+    }
+}
+static void json_escape(SB *sb, const char *s, uint32_t len) {
+    static const char *hex = "0123456789abcdef";
+    for (uint32_t i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)s[i];
+        switch (ch) {
+        case '"':  sb_puts(sb, "\\\""); break;
+        case '\\': sb_puts(sb, "\\\\"); break;
+        case '\n': sb_puts(sb, "\\n"); break;
+        case '\r': sb_puts(sb, "\\r"); break;
+        case '\t': sb_puts(sb, "\\t"); break;
+        case '\b': sb_puts(sb, "\\b"); break;
+        case '\f': sb_puts(sb, "\\f"); break;
+        default:
+            if (ch < 0x20) {
+                char u[6] = {'\\', 'u', '0', '0', hex[ch >> 4], hex[ch & 0xF]};
+                sb_put(sb, u, 6);
+            } else { char c = (char)ch; sb_put(sb, &c, 1); }
+        }
+    }
+}
+/* Read a JSON string literal at p (points at the opening quote), decoding
+ * escapes into out. Returns 1 on a well-formed string. */
+static int json_read_string(const char *p, SB *out) {
+    if (*p != '"') return 0;
+    p++;
+    while (*p && *p != '"') {
+        if (*p == '\\') {
+            p++;
+            switch (*p) {
+            case '"':  sb_put(out, "\"", 1); break;
+            case '\\': sb_put(out, "\\", 1); break;
+            case '/':  sb_put(out, "/", 1);  break;
+            case 'n':  sb_put(out, "\n", 1); break;
+            case 't':  sb_put(out, "\t", 1); break;
+            case 'r':  sb_put(out, "\r", 1); break;
+            case 'b':  sb_put(out, "\b", 1); break;
+            case 'f':  sb_put(out, "\f", 1); break;
+            case 'u': {
+                if (!is_hex(p[1]) || !is_hex(p[2]) ||
+                    !is_hex(p[3]) || !is_hex(p[4])) return 0;
+                unsigned cp = (hex_val(p[1]) << 12) | (hex_val(p[2]) << 8) |
+                              (hex_val(p[3]) << 4) | hex_val(p[4]);
+                p += 4;
+                if (cp >= 0xD800 && cp <= 0xDBFF && p[1] == '\\' &&
+                    p[2] == 'u' && is_hex(p[3]) && is_hex(p[4]) &&
+                    is_hex(p[5]) && is_hex(p[6])) {
+                    unsigned lo = (hex_val(p[3]) << 12) | (hex_val(p[4]) << 8) |
+                                  (hex_val(p[5]) << 4) | hex_val(p[6]);
+                    cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                    p += 6;
+                }
+                utf8_put(out, cp);
+                break;
+            }
+            case 0: return 0;
+            default: { char c = *p; sb_put(out, &c, 1); }
+            }
+            p++;
+        } else { sb_put(out, p, 1); p++; }
+    }
+    return *p == '"';
+}
+/* Find "key" used as an object key with a string value; decode into out.
+ * Good enough for the chat-completions replies we consume (any escaped
+ * occurrence inside a value keeps its backslash, so it never matches). */
+static int json_extract_string(const char *buf, const char *key, SB *out) {
+    size_t klen = strlen(key);
+    const char *p = buf;
+    while ((p = strchr(p, '"')) != NULL) {
+        if (strncmp(p + 1, key, klen) == 0 && p[1 + klen] == '"') {
+            const char *q = p + 2 + klen;
+            while (*q == ' ' || *q == '\t' || *q == '\n' || *q == '\r') q++;
+            if (*q == ':') {
+                q++;
+                while (*q == ' ' || *q == '\t' || *q == '\n' || *q == '\r') q++;
+                if (*q == '"') return json_read_string(q, out);
+            }
+        }
+        p++;
+    }
+    return 0;
+}
+
+/* ---- HTTP transport (libcurl) ---- */
+#ifdef VX_HAVE_CURL
+static size_t http_write(char *ptr, size_t sz, size_t nm, void *ud) {
+    sb_put((SB *)ud, ptr, sz * nm);
+    return sz * nm;
+}
+/* Perform a request. body!=NULL -> POST JSON with Bearer auth. On transport
+ * success returns 0 (HTTP status in *code, response in *resp); on failure
+ * returns -1 with a message in err. */
+static int http_request(const char *url, const char *auth, const char *body,
+                        SB *resp, long *code, char *err, size_t errn) {
+    CURL *c = curl_easy_init();
+    if (!c) { snprintf(err, errn, "curl init failed"); return -1; }
+    struct curl_slist *hdrs = NULL;
+    curl_easy_setopt(c, CURLOPT_URL, url);
+    curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, http_write);
+    curl_easy_setopt(c, CURLOPT_WRITEDATA, resp);
+    curl_easy_setopt(c, CURLOPT_USERAGENT, "vidyax/1.1");
+    curl_easy_setopt(c, CURLOPT_TIMEOUT, body ? 60L : 15L);
+    curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
+    if (auth) {
+        char ab[600];
+        snprintf(ab, sizeof ab, "Authorization: Bearer %s", auth);
+        hdrs = curl_slist_append(hdrs, ab);
+    }
+    if (body) {
+        hdrs = curl_slist_append(hdrs, "Content-Type: application/json");
+        curl_easy_setopt(c, CURLOPT_POSTFIELDS, body);
+        curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE, (long)strlen(body));
+    }
+    if (hdrs) curl_easy_setopt(c, CURLOPT_HTTPHEADER, hdrs);
+    CURLcode rc = curl_easy_perform(c);
+    if (rc == CURLE_OK) curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, code);
+    else snprintf(err, errn, "%s", curl_easy_strerror(rc));
+    if (hdrs) curl_slist_free_all(hdrs);
+    curl_easy_cleanup(c);
+    return rc == CURLE_OK ? 0 : -1;
+}
+#endif
+
+/* ---- ai module ---- */
+static const char *trim(const char *s, size_t len, size_t *outlen) {
+    while (len && isspace((unsigned char)*s)) { s++; len--; }
+    while (len && isspace((unsigned char)s[len - 1])) len--;
+    *outlen = len;
+    return s;
+}
+static void ai_open(OAI *self, const char *spec) {
+    const char *colon = strchr(spec, ':');
+    if (colon) {
+        size_t plen; const char *pp = trim(spec, (size_t)(colon - spec), &plen);
+        char prov[64];
+        if (plen >= sizeof prov) plen = sizeof prov - 1;
+        for (size_t i = 0; i < plen; i++)
+            prov[i] = (char)tolower((unsigned char)pp[i]);
+        prov[plen] = 0;
+        int pv;
+        if (strcmp(prov, "groq") == 0) pv = PROV_GROQ;
+        else if (strcmp(prov, "openai") == 0) pv = PROV_OPENAI;
+        else vm_error("unknown AI provider '%s' (available: groq, openai)",
+                      prov);
+        self->provider = pv;
+        size_t mlen; const char *mm = trim(colon + 1, strlen(colon + 1), &mlen);
+        if (mlen) self->model = new_str(mm, (uint32_t)mlen);
+    } else {
+        size_t mlen; const char *mm = trim(spec, strlen(spec), &mlen);
+        self->model = new_str(mm, (uint32_t)mlen);
+    }
+}
+static OAI *new_ai(void) {
+    OAI *a = (OAI *)alloc_obj(sizeof(OAI), O_AI);
+    a->provider = PROV_GROQ;
+    a->model = new_str("llama-3.1-8b-instant", 20);
+    a->system_prompt = NULL;
+    const char *env = getenv("VIDYAX_MODEL");
+    if (env && *env) ai_open(a, env);
+    return a;
+}
+static OBound *new_bound(OAI *self, int method) {
+    OBound *b = (OBound *)alloc_obj(sizeof(OBound), O_BOUND);
+    b->self = self; b->method = method;
+    return b;
+}
+static Value ai_ask(OAI *self, OStr *prompt) {
+#ifndef VX_HAVE_CURL
+    (void)self; (void)prompt;
+    vm_error("ai.ask needs libcurl (rebuild vxvm with libcurl available)");
+    return vnull();
+#else
+    const char *url, *keyname;
+    if (self->provider == PROV_OPENAI) {
+        url = "https://api.openai.com/v1/chat/completions";
+        keyname = "OPENAI_API_KEY";
+    } else {
+        url = "https://api.groq.com/openai/v1/chat/completions";
+        keyname = "GROQ_API_KEY";
+    }
+    const char *key = getenv(keyname);
+    if (!key || !*key)
+        vm_error("%s is not set. Run: export %s=...  "
+                 "(ai.ask needs internet & an API key)", keyname, keyname);
+
+    SB body; sb_init(&body);
+    sb_puts(&body, "{\"model\":\"");
+    json_escape(&body, self->model->chars, self->model->len);
+    sb_puts(&body, "\",\"messages\":[");
+    if (self->system_prompt) {
+        sb_puts(&body, "{\"role\":\"system\",\"content\":\"");
+        json_escape(&body, self->system_prompt->chars,
+                    self->system_prompt->len);
+        sb_puts(&body, "\"},");
+    }
+    sb_puts(&body, "{\"role\":\"user\",\"content\":\"");
+    json_escape(&body, prompt->chars, prompt->len);
+    sb_puts(&body, "\"}]}");
+
+    SB resp; sb_init(&resp);
+    long code = 0; char err[256];
+    int rc = http_request(url, key, body.buf, &resp, &code, err, sizeof err);
+    xfree(body.buf, body.cap);
+    if (rc != 0) {
+        char e[300]; snprintf(e, sizeof e, "%s", err);
+        xfree(resp.buf, resp.cap);
+        vm_error("AI failed: %s", e);
+    }
+    if (code >= 400) {
+        char snippet[220]; snprintf(snippet, sizeof snippet, "%.200s",
+                                    resp.buf ? resp.buf : "");
+        long cc = code; xfree(resp.buf, resp.cap);
+        vm_error("AI failed (HTTP %ld): %s", cc, snippet);
+    }
+    SB out; sb_init(&out);
+    if (json_extract_string(resp.buf, "content", &out)) {
+        OStr *s = new_str(out.buf, (uint32_t)out.len);
+        xfree(out.buf, out.cap); xfree(resp.buf, resp.cap);
+        return vstr_o(s);
+    }
+    xfree(out.buf, out.cap);
+    SB em; sb_init(&em);
+    if (json_extract_string(resp.buf, "message", &em)) {
+        char detail[220]; snprintf(detail, sizeof detail, ": %.200s", em.buf);
+        xfree(em.buf, em.cap); xfree(resp.buf, resp.cap);
+        vm_error("AI gave an unexpected reply%s", detail);
+    }
+    xfree(em.buf, em.cap); xfree(resp.buf, resp.cap);
+    vm_error("AI gave an unexpected reply");
+    return vnull();
+#endif
+}
+static Value ai_invoke(OAI *self, int method, int argc, Value *args) {
+    static const char *mn[] = {"open", "system", "ask"};
+    if (argc != 1) vm_error("ai.%s needs 1 argument", mn[method]);
+    OStr *s = vstr(args[0]);
+    if (method == AIM_OPEN) { ai_open(self, s->chars); return vai_o(self); }
+    if (method == AIM_SYSTEM) { self->system_prompt = s; return vai_o(self); }
+    return ai_ask(self, s);
+}
+/* Member-access policy shared with the Python engines: underscore names are
+ * private everywhere; only the ai object exposes members. */
+static Value member_get(Value o, OStr *name) {
+    if (name->len > 0 && name->chars[0] == '_')
+        vm_error("member '%s' is private", name->chars);
+    if (o.t == V_AI) {
+        OAI *a = AS_AI(o);
+        const char *nm = name->chars;
+        if (strcmp(nm, "open") == 0)   return vbound_o(new_bound(a, AIM_OPEN));
+        if (strcmp(nm, "system") == 0) return vbound_o(new_bound(a, AIM_SYSTEM));
+        if (strcmp(nm, "ask") == 0)    return vbound_o(new_bound(a, AIM_ASK));
+        if (strcmp(nm, "model") == 0)  return vstr_o(a->model);
+        if (strcmp(nm, "provider") == 0)
+            return vstr_o(a->provider == PROV_OPENAI
+                          ? new_str("openai", 6) : new_str("groq", 4));
+        if (strcmp(nm, "system_prompt") == 0)
+            return a->system_prompt ? vstr_o(a->system_prompt) : vnull();
+        vm_error("'ai' has no member '%s'", name->chars);
+    }
+    vm_error("object has no member '%s'", name->chars);
     return vnull();
 }
 
@@ -538,9 +858,29 @@ static Value b_type(int argc, Value *a) {
     return vstr_o(new_str(n, (uint32_t)strlen(n)));
 }
 static Value b_get(int argc, Value *a) {
+#ifndef VX_HAVE_CURL
     (void)argc; (void)a;
-    vm_error("get() is not supported in vxvm yet — use `vidyax run`");
+    vm_error("get() needs libcurl (rebuild vxvm with libcurl available)");
     return vnull();
+#else
+    if (argc != 1 || a[0].t != V_STR) vm_error("get() needs a text URL");
+    SB resp; sb_init(&resp);
+    long code = 0; char err[256];
+    int rc = http_request(AS_STR(a[0])->chars, NULL, NULL, &resp, &code,
+                          err, sizeof err);
+    if (rc != 0) {
+        char e[300]; snprintf(e, sizeof e, "%s", err);
+        xfree(resp.buf, resp.cap);
+        vm_error("get() failed: cannot connect (%s)", e);
+    }
+    if (code >= 400) {
+        long cc = code; xfree(resp.buf, resp.cap);
+        vm_error("get() failed: HTTP %ld", cc);
+    }
+    OStr *s = new_str(resp.buf, (uint32_t)resp.len);
+    xfree(resp.buf, resp.cap);
+    return vstr_o(s);
+#endif
 }
 
 static Builtin BUILTINS[] = {
@@ -634,7 +974,7 @@ static void load(const char *path) {
 static int opsize(uint8_t op) {   /* operand bytes; -1 = unknown opcode */
     switch (op) {
     case OP_CONST: case OP_LOAD: case OP_STORE:
-    case OP_LIST: case OP_MAKE_FUNC:
+    case OP_LIST: case OP_MAKE_FUNC: case OP_GET_MEMBER:
     case OP_LOAD_SLOT: case OP_STORE_SLOT: return 2;
     case OP_CALL: return 1;
     case OP_JMP: case OP_JMP_IF_FALSE: case OP_JIF_PEEK:
@@ -644,7 +984,7 @@ static int opsize(uint8_t op) {   /* operand bytes; -1 = unknown opcode */
     case OP_NEG: case OP_EQ: case OP_NE: case OP_LT: case OP_LE:
     case OP_GT: case OP_GE: case OP_NOT: case OP_INDEX: case OP_RET:
     case OP_PRINT: case OP_ASK: case OP_CHECK_RPT: case OP_CHECK_ITER:
-    case OP_LEN: case OP_TRY_POP: case OP_HALT: return 0;
+    case OP_LEN: case OP_TRY_POP: case OP_HALT: case OP_AI_NEW: return 0;
     default: return -1;
     }
 }
@@ -668,17 +1008,18 @@ static void verify(void) {
                         "at %u in '%s'\n", i, p->name->chars);
                 exit(1);
             }
-            if (op == OP_CONST || op == OP_LOAD || op == OP_STORE) {
+            if (op == OP_CONST || op == OP_LOAD || op == OP_STORE ||
+                op == OP_GET_MEMBER) {
                 uint16_t ix; memcpy(&ix, p->code + i + 1, 2);
                 if (ix >= nconsts) {
                     fprintf(stderr, "[Vidyax] verify: const %u out of "
                             "range in '%s'\n", ix, p->name->chars);
                     exit(1);
                 }
-                if ((op == OP_LOAD || op == OP_STORE) &&
-                    consts[ix].t != V_STR) {
-                    fprintf(stderr, "[Vidyax] verify: LOAD/STORE needs a "
-                            "name constant in '%s'\n", p->name->chars);
+                if ((op == OP_LOAD || op == OP_STORE ||
+                     op == OP_GET_MEMBER) && consts[ix].t != V_STR) {
+                    fprintf(stderr, "[Vidyax] verify: LOAD/STORE/GET_MEMBER "
+                            "needs a name constant in '%s'\n", p->name->chars);
                     exit(1);
                 }
             }
@@ -737,6 +1078,15 @@ static void mark_obj(Obj *o) {
     case O_FUNC:
         mark_obj((Obj *)((OFunc *)o)->closure);
         break;
+    case O_AI: {
+        OAI *a = (OAI *)o;
+        mark_obj((Obj *)a->model);
+        mark_obj((Obj *)a->system_prompt);
+        break;
+    }
+    case O_BOUND:
+        mark_obj((Obj *)((OBound *)o)->self);
+        break;
     case O_ENV: {
         Env *e = (Env *)o;
         for (uint32_t i = 0; i < e->count; i++) {
@@ -750,7 +1100,8 @@ static void mark_obj(Obj *o) {
 }
 static void mark_value(Value v) {
     /* V_BUILTIN points into a static table, not the GC heap */
-    if (v.t == V_STR || v.t == V_LIST || v.t == V_FUNC)
+    if (v.t == V_STR || v.t == V_LIST || v.t == V_FUNC ||
+        v.t == V_AI || v.t == V_BOUND)
         mark_obj(v.as.o);
 }
 static void free_obj(Obj *o) {   /* mirrors every byte alloc counted */
@@ -769,6 +1120,12 @@ static void free_obj(Obj *o) {   /* mirrors every byte alloc counted */
     }
     case O_FUNC:
         mem_used -= sizeof(OFunc);
+        break;
+    case O_AI:
+        mem_used -= sizeof(OAI);
+        break;
+    case O_BOUND:
+        mem_used -= sizeof(OBound);
         break;
     case O_ENV: {
         Env *e = (Env *)o;
@@ -956,6 +1313,12 @@ static void run(void) {
                 Value r = ((Builtin *)callee.as.o)->fn(argc, &stack[sp - argc]);
                 sp -= argc + 1;
                 push(r);
+            } else if (callee.t == V_BOUND) {
+                OBound *bm = AS_BOUND(callee);
+                Value r = ai_invoke(bm->self, bm->method, argc,
+                                    &stack[sp - argc]);
+                sp -= argc + 1;
+                push(r);
             } else if (callee.t == V_FUNC) {
                 OFunc *fn = AS_FUNC(callee);
                 Proto *pr = fn->proto;
@@ -1001,6 +1364,15 @@ static void run(void) {
             fn->closure = fr->env;
             Value v; v.t = V_FUNC; v.as.o = (Obj *)fn;
             push(v);
+            break;
+        }
+        case OP_AI_NEW:
+            push(vai_o(new_ai()));
+            break;
+        case OP_GET_MEMBER: {
+            uint16_t ix; memcpy(&ix, code + fr->ip, 2); fr->ip += 2;
+            Value obj = pop();
+            push(member_get(obj, AS_STR(consts[ix])));
             break;
         }
         case OP_RET: {
@@ -1104,7 +1476,13 @@ int main(int argc, char **argv) {
     load(path);
     if (nprotos == 0) { fprintf(stderr, "[Vidyax] empty program\n"); return 1; }
     verify();
+#ifdef VX_HAVE_CURL
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+#endif
     start_clock = clock();
     run();
+#ifdef VX_HAVE_CURL
+    curl_global_cleanup();
+#endif
     return 0;
 }

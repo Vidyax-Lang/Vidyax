@@ -16,8 +16,9 @@ Format .vxc (little-endian):
            u32 codelen, then code bytes
 
 Opcodes: see OPS below (mirrored in vm/vxvm.c — keep in sync!).
-Not supported in the VM yet (rejected at compile time): use ai / member
-access. get() compiles but raises at runtime in the VM.
+`use ai`, member access and get() are supported: the VM ships the same ai
+module and routes ai.ask()/get() through libcurl (see vm/vxvm.c). Only
+`use <other>` modules are still rejected at compile time.
 """
 import struct
 import sys
@@ -146,6 +147,8 @@ OPS = {
     "HALT": 37,
     "LOAD_SLOT": 38,   # u16 slot index (direct stack access, no lookup)
     "STORE_SLOT": 39,  # u16 slot index
+    "AI_NEW": 40,      # push a fresh 'ai' module object
+    "GET_MEMBER": 41,  # u16 const idx (member name str); pops obj, pushes member
 }
 
 
@@ -196,7 +199,7 @@ def _fold(n):
 # operand byte-width per opcode (for the peephole pass)
 _OPSIZE = {
     OPS["CONST"]: 2, OPS["LOAD"]: 2, OPS["STORE"]: 2,
-    OPS["LOAD_SLOT"]: 2, OPS["STORE_SLOT"]: 2,
+    OPS["LOAD_SLOT"]: 2, OPS["STORE_SLOT"]: 2, OPS["GET_MEMBER"]: 2,
     OPS["LIST"]: 2, OPS["MAKE_FUNC"]: 2, OPS["CALL"]: 1,
     OPS["JMP"]: 4, OPS["JMP_IF_FALSE"]: 4,
     OPS["JIF_PEEK"]: 4, OPS["JIT_PEEK"]: 4, OPS["TRY_PUSH"]: 4,
@@ -429,9 +432,13 @@ class Compiler:
             self.block(p, n.catch_body, ctx)
             self.patch(p, jend)
         elif t == "Import":
-            raise VidyaxError(
-                f"'use {n.name}' is not supported in the VM yet "
-                "(run it with `vidyax run` instead)")
+            if n.name != "ai":
+                raise VidyaxError(
+                    f"'use {n.name}' is not supported in the VM "
+                    "(only 'use ai' is available)")
+            # bind the name to a fresh ai-module object
+            self.emit(p, "AI_NEW")
+            self.name_store(p, n.name)
         else:
             raise VidyaxError(f"cannot compile statement {t}")
 
@@ -511,9 +518,8 @@ class Compiler:
             self.expr(p, n.idx, ctx)
             self.emit(p, "INDEX")
         elif t == "Member":
-            raise VidyaxError(
-                "member access is not supported in the VM yet "
-                "(run it with `vidyax run` instead)")
+            self.expr(p, n.obj, ctx)
+            self.emit(p, "GET_MEMBER", ("H", self.cstr(n.name)))
         else:
             raise VidyaxError(f"cannot compile expression {t}")
 
@@ -635,7 +641,7 @@ OP_NAMES = {v: k for k, v in OPS.items()}
 OPERANDS = {  # op -> (size, fmt)
     "CONST": (2, "<H"), "LOAD": (2, "<H"), "STORE": (2, "<H"),
     "LIST": (2, "<H"), "MAKE_FUNC": (2, "<H"), "CALL": (1, "<B"),
-    "LOAD_SLOT": (2, "<H"), "STORE_SLOT": (2, "<H"),
+    "LOAD_SLOT": (2, "<H"), "STORE_SLOT": (2, "<H"), "GET_MEMBER": (2, "<H"),
     "JMP": (4, "<I"), "JMP_IF_FALSE": (4, "<I"),
     "JIF_PEEK": (4, "<I"), "JIT_PEEK": (4, "<I"), "TRY_PUSH": (4, "<I"),
 }
@@ -658,7 +664,7 @@ def dis(c):
                 size, fmt = spec
                 val = struct.unpack_from(fmt, p.code, i + 1)[0]
                 extra = ""
-                if op in ("CONST", "LOAD", "STORE"):
+                if op in ("CONST", "LOAD", "STORE", "GET_MEMBER"):
                     extra = f"   ; {c.consts[val]!r}"
                 elif op in ("LOAD_SLOT", "STORE_SLOT"):
                     extra = f"   ; slot '{p.slots[val]}'"
