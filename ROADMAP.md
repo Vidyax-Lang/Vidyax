@@ -6,7 +6,7 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 
 ## Prioritas berikutnya
 
-1. **VS Code**: ikon file .vx khusus + publish extension ke Marketplace (butuh Node.js + vsce).
+Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ## Ide lain (belum diprioritaskan)
 
@@ -18,6 +18,11 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 
 ### v1.2
 
+- ~~Ikon file .vx khusus di VS Code~~ -> ikon SVG terang/gelap di `vidyax-vscode`
+  (contributes.languages[].icon, engine ^1.63), + `.vscodeignore`; terbundel di
+  `vidyax-1.1.0.vsix`.
+- ~~Publish extension ke VS Code Marketplace~~ -> v1.1.0 LIVE di Marketplace
+  (publisher `nadev`).
 - ~~`ai.ask` live~~ -> diuji dengan GROQ_API_KEY asli di KETIGA engine (walk, fast,
   VM `--allow-net`); contoh baru `contoh/chatbot.vx` (chat loop + simpan transkrip
   pakai stdlib file).
