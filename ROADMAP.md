@@ -16,6 +16,15 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ## Selesai
 
+### v1.3
+
+- Stdlib operasi list (7 builtin baru, total 35, di ketiga engine):
+  `pop(lst[, i])`, `remove`, `insert` (clamp ala Python), `sort` (in-place,
+  stabil, tolak tipe campuran dengan pesan sama persis Python/VM), `reverse`,
+  `find` (list + teks, -1 kalau tidak ada), `slice` (aturan `x[a:b]` Python,
+  indeks negatif + clamp).
+- Test: 108/108 differential, 94/94 VM — hijau juga di `--gc-stress` dan ASan.
+
 ### v1.2
 
 - ~~Ikon file .vx khusus di VS Code~~ -> ikon SVG terang/gelap di `vidyax-vscode`
@@ -48,7 +57,7 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 - GC mark-sweep di VM (safepoint, --gc-stress, --gc-stats).
 - Modul `ai` + member access di VM (libcurl), `get()`/`ai.ask` digate `--allow-net`.
 - Test suite VM: 47/47 lulus (tests_vm.py).
-- Push ke GitHub: repo `Vidyax` sudah live (github.com/daffa2555/Vidyax).
+- Push ke GitHub: repo `Vidyax` sudah live (github.com/Vidyax-Lang/Vidyax).
 
 ### v1.0
 

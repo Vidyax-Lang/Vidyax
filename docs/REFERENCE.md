@@ -228,6 +228,13 @@ age: ask "How old are you?"
 | `contains(x, item)` | true if list `x` has `item`, or text `x` has that substring |
 | `startswith(s, p)`  | true if text `s` starts with `p` |
 | `endswith(s, p)`    | true if text `s` ends with `p` |
+| `pop(lst)` / `pop(lst, i)` | remove & return the last item (or item `i`) |
+| `remove(lst, x)`    | remove the first `x` from the list (raises if absent) |
+| `insert(lst, i, x)` | insert `x` at position `i` (out-of-range goes to an end) |
+| `sort(lst)`         | sort the list in place (items must be the same type) |
+| `reverse(lst)`      | reverse the list in place |
+| `find(x, item)`     | first index of `item` in a list/text, `-1` if absent |
+| `slice(x, a, b)`    | copy of items `a..b-1` of a list/text (negatives count from the end) |
 
 The names above are *reserved* — they cannot be overwritten.
 

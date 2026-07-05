@@ -19,7 +19,7 @@ import json
 import urllib.request
 import urllib.error
 
-VERSION = "1.2"
+VERSION = "1.3"
 
 # =====================================================================
 # 1. TOKEN & LEXER
@@ -1191,6 +1191,76 @@ def _b_contains(x, item):
 def _b_startswith(s, p): return str(s).startswith(_vstr(p))
 def _b_endswith(s, p):   return str(s).endswith(_vstr(p))
 
+def _b_pop(lst, i=None):
+    if not isinstance(lst, list):
+        raise _VidyaxRuntime("pop() needs a list")
+    if len(lst) == 0:
+        raise _VidyaxRuntime("pop() on an empty list")
+    try:
+        return lst.pop(len(lst) - 1 if i is None else int(i))
+    except Exception:
+        raise _VidyaxRuntime("index out of range")
+
+def _b_remove(lst, x):
+    if not isinstance(lst, list):
+        raise _VidyaxRuntime("remove() needs a list")
+    try:
+        lst.remove(x)
+    except ValueError:
+        raise _VidyaxRuntime("remove(): value not in list")
+    return lst
+
+def _b_insert(lst, i, x):
+    if not isinstance(lst, list):
+        raise _VidyaxRuntime("insert() needs a list")
+    try:
+        i = int(i)
+    except Exception:
+        raise _VidyaxRuntime("insert() needs a list")
+    lst.insert(i, x)   # clamps like Python: out-of-range goes to an end
+    return lst
+
+def _sort_cat(v):
+    if isinstance(v, bool) or isinstance(v, (int, float)): return "num"
+    if isinstance(v, str):  return "text"
+    if isinstance(v, list): return "list"
+    return None   # null/functions: not orderable
+
+def _b_sort(lst):
+    if not isinstance(lst, list):
+        raise _VidyaxRuntime("sort() needs a list")
+    if len(lst) > 1:
+        c0 = _sort_cat(lst[0])
+        for v in lst[1:]:
+            if c0 is None or _sort_cat(v) != c0:
+                raise _VidyaxRuntime("cannot compare %s with %s"
+                                     % (_b_type(lst[0]), _b_type(v)))
+        lst.sort()
+    return lst
+
+def _b_reverse(lst):
+    if not isinstance(lst, list):
+        raise _VidyaxRuntime("reverse() needs a list")
+    lst.reverse()
+    return lst
+
+def _b_find(x, item):
+    if isinstance(x, list):
+        for i, v in enumerate(x):
+            if v == item: return i
+        return -1
+    if isinstance(x, str):
+        return x.find(_vstr(item))
+    raise _VidyaxRuntime("find() needs a list or text")
+
+def _b_slice(x, a, b):
+    if not isinstance(x, (list, str)):
+        raise _VidyaxRuntime("slice() needs a list or text")
+    try:
+        return x[int(a):int(b)]
+    except Exception:
+        raise _VidyaxRuntime("slice() needs a list or text")
+
 def _errtext(e):
     # Normalize Python error text into Vidyax-style wording. Used by BOTH
     # engines (try/catch + top-level reporting), so messages always match.
@@ -1236,6 +1306,10 @@ BUILTINS = {
     "replace": _RT_NS["_b_replace"], "trim": _RT_NS["_b_trim"],
     "contains": _RT_NS["_b_contains"],
     "startswith": _RT_NS["_b_startswith"], "endswith": _RT_NS["_b_endswith"],
+    "pop": _RT_NS["_b_pop"], "remove": _RT_NS["_b_remove"],
+    "insert": _RT_NS["_b_insert"], "sort": _RT_NS["_b_sort"],
+    "reverse": _RT_NS["_b_reverse"], "find": _RT_NS["_b_find"],
+    "slice": _RT_NS["_b_slice"],
 }
 BUILTIN_NAMES = set(BUILTINS)
 

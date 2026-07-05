@@ -91,6 +91,20 @@ CASES = [
     ('print contains(["a", "b"], "b")\n', "true\n"),
     ('print startswith("vidyax", "vid")\nprint startswith("vidyax", "dya")\n', "true\nfalse\n"),
     ('print endswith("vidyax", "yax")\nprint endswith("vidyax", "vid")\n', "true\nfalse\n"),
+    # stdlib: list ops
+    ('xs: [3, 1, 2]\nsort(xs)\nprint xs\n', "[1, 2, 3]\n"),
+    ('print sort(["b", "c", "a"])\n', "[a, b, c]\n"),
+    ('print reverse([1, 2, 3])\n', "[3, 2, 1]\n"),
+    ('xs: [1, 2, 3]\nprint pop(xs)\nprint xs\n', "3\n[1, 2]\n"),
+    ('print pop([9, 8, 7], 0)\nprint pop([9, 8, 7], -2)\n', "9\n8\n"),
+    ('ys: [1, 2, 4]\ninsert(ys, 2, 3)\nprint ys\n', "[1, 2, 3, 4]\n"),
+    ('ys: [1, 2]\ninsert(ys, 99, 3)\ninsert(ys, 0, 0)\nprint ys\n', "[0, 1, 2, 3]\n"),
+    ('ys: [1, 2, 2, 3]\nremove(ys, 2)\nprint ys\n', "[1, 2, 3]\n"),
+    ('print find([5, 6, 7], 6)\nprint find([5, 6], 9)\n', "1\n-1\n"),
+    ('print find("vidyax", "dy")\nprint find("vidyax", "zz")\n', "2\n-1\n"),
+    ('print slice([1, 2, 3, 4, 5], 1, 3)\n', "[2, 3]\n"),
+    ('print slice("vidyax", 0, 3)\nprint slice("vidyax", -3, 99)\n', "vid\nyax\n"),
+    ('print slice([1, 2, 3], 2, 1)\n', "[]\n"),
     # stdlib: files (the VM needs --allow-fs; tests_vm.py passes it)
     ('writefile("/tmp/vx_selftest.txt", "abc")\nprint readfile("/tmp/vx_selftest.txt")\n', "abc\n"),
     ('print writefile("/tmp/vx_selftest.txt", 123)\nprint readfile("/tmp/vx_selftest.txt")\n', "null\n123\n"),
@@ -121,6 +135,12 @@ ERROR_CASES = [
     ('print replace("abc", "", "x")\n', "replace() needs a non-empty text to find"),
     ('print contains(5, 1)\n', "contains() needs a list or text"),
     ('print readfile("/definitely/missing/vx.txt")\n', "readfile() failed"),
+    ('print pop([])\n', "pop() on an empty list"),
+    ('print pop([1, 2], 5)\n', "index out of range"),
+    ('remove([1, 2], 9)\n', "remove(): value not in list"),
+    ('sort([1, "a"])\n', "cannot compare number with text"),
+    ('print find(5, 1)\n', "find() needs a list or text"),
+    ('print slice(5, 0, 1)\n', "slice() needs a list or text"),
 ]
 
 # --- runtime errors must report the ORIGINAL .vx line (source map). Checked

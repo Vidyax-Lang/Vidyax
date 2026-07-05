@@ -1032,6 +1032,127 @@ static Value b_endswith(int argc, Value *a) {
                  memcmp(s->chars + (s->len - p->len), p->chars, p->len) == 0);
 }
 
+static Value b_pop(int argc, Value *a) {
+    if (argc < 1 || argc > 2 || a[0].t != V_LIST) vm_error("pop() needs a list");
+    OList *l = AS_LIST(a[0]);
+    if (l->count == 0) vm_error("pop() on an empty list");
+    long long i = (long long)l->count - 1;
+    if (argc == 2) {
+        if (!numlike(a[1])) vm_error("index out of range");
+        i = (long long)trunc(as_num(a[1]));
+        if (i < 0) i += l->count;
+        if (i < 0 || i >= (long long)l->count) vm_error("index out of range");
+    }
+    Value v = l->items[i];
+    memmove(l->items + i, l->items + i + 1,
+            sizeof(Value) * (l->count - (uint32_t)i - 1));
+    l->count--;
+    return v;
+}
+static Value b_remove(int argc, Value *a) {
+    if (argc != 2 || a[0].t != V_LIST) vm_error("remove() needs a list");
+    OList *l = AS_LIST(a[0]);
+    for (uint32_t i = 0; i < l->count; i++) {
+        if (values_eq(l->items[i], a[1])) {
+            memmove(l->items + i, l->items + i + 1,
+                    sizeof(Value) * (l->count - i - 1));
+            l->count--;
+            return a[0];
+        }
+    }
+    vm_error("remove(): value not in list");
+    return vnull();
+}
+static Value b_insert(int argc, Value *a) {
+    if (argc != 3 || a[0].t != V_LIST || !numlike(a[1]))
+        vm_error("insert() needs a list");
+    OList *l = AS_LIST(a[0]);
+    long long i = (long long)trunc(as_num(a[1]));
+    if (i < 0) i += l->count;                    /* clamp like Python */
+    if (i < 0) i = 0;
+    if (i > (long long)l->count) i = l->count;
+    list_push(l, vnull());                       /* grow by one */
+    memmove(l->items + i + 1, l->items + i,
+            sizeof(Value) * (l->count - (uint32_t)i - 1));
+    l->items[i] = a[2];
+    return a[0];
+}
+static Value b_sort(int argc, Value *a) {
+    if (argc != 1 || a[0].t != V_LIST) vm_error("sort() needs a list");
+    OList *l = AS_LIST(a[0]);
+    if (l->count > 1) {
+        /* same pre-check (and message) as _b_sort in vidyax.py */
+        Value f = l->items[0];
+        int c0 = numlike(f) ? 1 : f.t == V_STR ? 2 : f.t == V_LIST ? 3 : 0;
+        for (uint32_t i = 1; i < l->count; i++) {
+            Value v = l->items[i];
+            int c = numlike(v) ? 1 : v.t == V_STR ? 2 : v.t == V_LIST ? 3 : 0;
+            if (c0 == 0 || c != c0)
+                vm_error("cannot compare %s with %s",
+                         type_name(f), type_name(v));
+        }
+        /* insertion sort: stable, matches Python's ordering guarantees */
+        for (uint32_t i = 1; i < l->count; i++) {
+            Value v = l->items[i];
+            uint32_t j = i;
+            while (j > 0 && values_cmp(l->items[j - 1], v) > 0) {
+                l->items[j] = l->items[j - 1];
+                j--;
+            }
+            l->items[j] = v;
+        }
+    }
+    return a[0];
+}
+static Value b_reverse(int argc, Value *a) {
+    if (argc != 1 || a[0].t != V_LIST) vm_error("reverse() needs a list");
+    OList *l = AS_LIST(a[0]);
+    for (uint32_t i = 0, j = l->count; i + 1 < j--; i++) {
+        Value t = l->items[i]; l->items[i] = l->items[j]; l->items[j] = t;
+    }
+    return a[0];
+}
+static Value b_find(int argc, Value *a) {
+    if (argc != 2) vm_error("find() needs 2 values");
+    if (a[0].t == V_LIST) {
+        OList *l = AS_LIST(a[0]);
+        for (uint32_t i = 0; i < l->count; i++)
+            if (values_eq(l->items[i], a[1])) return vnum((double)i);
+        return vnum(-1);
+    }
+    if (a[0].t == V_STR) {
+        OStr *s = AS_STR(a[0]), *sub = vstr(a[1]);
+        if (sub->len == 0) return vnum(0);
+        for (const char *p = s->chars; p + sub->len <= s->chars + s->len; p++)
+            if (memcmp(p, sub->chars, sub->len) == 0)
+                return vnum((double)(p - s->chars));
+        return vnum(-1);
+    }
+    vm_error("find() needs a list or text");
+    return vnull();
+}
+static Value b_slice(int argc, Value *a) {
+    if (argc != 3 || !numlike(a[1]) || !numlike(a[2]))
+        vm_error("slice() needs a list or text");
+    long long n, lo = (long long)trunc(as_num(a[1])),
+                 hi = (long long)trunc(as_num(a[2]));
+    if (a[0].t == V_LIST)      n = AS_LIST(a[0])->count;
+    else if (a[0].t == V_STR)  n = AS_STR(a[0])->len;
+    else { vm_error("slice() needs a list or text"); return vnull(); }
+    if (lo < 0) lo += n;                          /* Python x[a:b] rules */
+    if (lo < 0) lo = 0;
+    if (lo > n) lo = n;
+    if (hi < 0) hi += n;
+    if (hi < 0) hi = 0;
+    if (hi > n) hi = n;
+    if (hi < lo) hi = lo;
+    if (a[0].t == V_STR)
+        return vstr_o(new_str(AS_STR(a[0])->chars + lo, (uint32_t)(hi - lo)));
+    OList *src = AS_LIST(a[0]), *out = new_list((uint32_t)(hi - lo) + 1);
+    for (long long i = lo; i < hi; i++) list_push(out, src->items[i]);
+    return vlist_o(out);
+}
+
 static Builtin BUILTINS[] = {
     {"len", b_len}, {"range", b_range}, {"text", b_text}, {"num", b_num},
     {"upper", b_upper}, {"lower", b_lower}, {"split", b_split},
@@ -1042,6 +1163,9 @@ static Builtin BUILTINS[] = {
     {"sqrt", b_sqrt}, {"pow", b_pow}, {"random", b_random},
     {"replace", b_replace}, {"trim", b_trim}, {"contains", b_contains},
     {"startswith", b_startswith}, {"endswith", b_endswith},
+    {"pop", b_pop}, {"remove", b_remove}, {"insert", b_insert},
+    {"sort", b_sort}, {"reverse", b_reverse}, {"find", b_find},
+    {"slice", b_slice},
 };
 
 /* ---- loader ---- */
