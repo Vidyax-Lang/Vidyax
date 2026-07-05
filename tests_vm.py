@@ -3,8 +3,8 @@
 
 Reuses the exact CASES/ERROR_CASES from tests.py: compiles each case to
 bytecode, runs ./vm/vxvm, and requires stdout + error text to match the
-expected result. Cases using features the VM doesn't support yet
-(`use ai`, member access) are skipped explicitly and counted.
+expected result. `use ai` and member access run on the VM now; the only
+skipped cases are ones that would make a live network request.
 
 Run: python3 tests_vm.py
 """
@@ -20,9 +20,10 @@ VM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vm", "vxvm")
 # extra flags, e.g.: VXVM_FLAGS="--gc-stress" python3 tests_vm.py
 VM_FLAGS = os.environ.get("VXVM_FLAGS", "").split()
 
-# VM milestone 1 doesn't do `use ai` / member access (compile-time reject)
+# The VM runs `use ai` and member access. Only skip cases that would hit
+# the network (ai.ask / a reachable get()), which needs credentials.
 def supported(src):
-    return "use ai" not in src and ".__class__" not in src
+    return ".ask" not in src
 
 
 def run_vm(src):
@@ -93,7 +94,7 @@ def main():
 
     total = len(CASES) + len(ERROR_CASES)
     print(f"\nVM: {passed} passed, {failed} failed, {skipped} skipped "
-          f"(ai/member — not in VM milestone 1) of {total}")
+          f"(network — ai.ask) of {total}")
     if failed:
         sys.exit(1)
 
