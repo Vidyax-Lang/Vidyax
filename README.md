@@ -11,7 +11,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/daffa2555/Vidyax?style=social)](https://github.com/daffa2555/Vidyax/stargazers)
 [![Docs](https://img.shields.io/badge/docs-online-8A2BE2)](https://daffa2555.github.io/Vidyax/)
 
-[Documentation](https://daffa2555.github.io/Vidyax/) · [Report a Bug](https://github.com/daffa2555/Vidyax/issues) · [Request a Feature](https://github.com/daffa2555/Vidyax/issues)
+[Documentation](https://vidyax-lang.github.io/Vidyax/) · [Report a Bug](https://github.com/daffa2555/Vidyax/issues) · [Request a Feature](https://github.com/daffa2555/Vidyax/issues)
 
 </div>
 
@@ -112,7 +112,7 @@ func factorial(n):
 print "5! = " + factorial(5)
 ```
 
-For the complete language reference, see the [official documentation](https://daffa2555.github.io/Vidyax/).
+For the complete language reference, see the [official documentation](https://vidyax-lang.github.io/Vidyax/).
 
 ## Installation & Setup
 
