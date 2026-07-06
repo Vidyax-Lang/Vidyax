@@ -14,7 +14,7 @@ import sys
 import tempfile
 
 import vxc
-from tests import CASES, ERROR_CASES
+from tests import CASES, ERROR_CASES, GO_CASES
 
 VM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vm", "vxvm")
 # extra flags, e.g.: VXVM_FLAGS="--gc-stress" python3 tests_vm.py
@@ -94,6 +94,23 @@ def main():
             passed += 1
             print(f"  PASS vm-err {i} (#{base+i})")
 
+    # go/wait (Phase C): the deterministic task subset must match too
+    for i, (src, want, want_err) in enumerate(GO_CASES, 1):
+        out, err = run_vm(src)
+        problems = []
+        if out != want:
+            problems.append(f"got {out!r}, want {want!r}")
+        if want_err is None and err is not None:
+            problems.append(f"errored: {err!r}")
+        if want_err is not None and (err is None or want_err not in err):
+            problems.append(f"error {err!r} missing {want_err!r}")
+        if problems:
+            failed += 1
+            print(f"  FAIL vm-go {i}: " + " | ".join(problems))
+        else:
+            passed += 1
+            print(f"  PASS vm-go {i}")
+
     # sandbox: without --allow-fs the VM must refuse file access
     saved = VM_FLAGS[:]
     try:
@@ -108,7 +125,7 @@ def main():
         failed += 1
         print(f"  FAIL vm-sandbox fs-deny: out={out!r} err={err!r}")
 
-    total = len(CASES) + len(ERROR_CASES) + 1
+    total = len(CASES) + len(ERROR_CASES) + len(GO_CASES) + 1
     print(f"\nVM: {passed} passed, {failed} failed, {skipped} skipped "
           f"(network — ai.ask) of {total}")
     if failed:

@@ -164,8 +164,9 @@ static Value b_get(int argc, Value *a) {
     if (argc != 1 || a[0].t != V_STR) vm_error("get() needs a text URL");
     SB resp; sb_init(&resp);
     long code = 0; char err[256];
-    int rc = http_request(AS_STR(a[0])->chars, NULL, NULL, &resp, &code,
-                          err, sizeof err);
+    int rc;
+    VX_BLOCKING(rc = http_request(AS_STR(a[0])->chars, NULL, NULL, &resp,
+                                  &code, err, sizeof err));
     if (rc != 0) {
         char e[300]; snprintf(e, sizeof e, "%s", err);
         xfree(resp.buf, resp.cap);
@@ -186,16 +187,22 @@ static Value b_readfile(int argc, Value *a) {
         vm_error("file access is not allowed "
                  "(pass --allow-fs to enable readfile / writefile)");
     if (argc != 1 || a[0].t != V_STR) vm_error("readfile() needs a text path");
-    FILE *f = fopen(AS_STR(a[0])->chars, "rb");
-    if (!f) vm_error("readfile() failed: %s", strerror(errno));
     SB sb; sb_init(&sb);
-    char buf[4096]; size_t n;
-    while ((n = fread(buf, 1, sizeof buf, f)) > 0) sb_put(&sb, buf, n);
-    if (ferror(f)) {
-        fclose(f); xfree(sb.buf, sb.cap);
-        vm_error("readfile() failed: %s", strerror(errno));
+    FILE *f; int failed = 0, saved_errno = 0;
+    VX_UNLOCK();          /* raw buffers only while unlocked — no GC objects */
+    f = fopen(AS_STR(a[0])->chars, "rb");
+    if (!f) { failed = 1; saved_errno = errno; }
+    else {
+        char buf[4096]; size_t n;
+        while ((n = fread(buf, 1, sizeof buf, f)) > 0) sb_put(&sb, buf, n);
+        if (ferror(f)) { failed = 1; saved_errno = errno; }
+        fclose(f);
     }
-    fclose(f);
+    VX_LOCK();
+    if (failed) {
+        xfree(sb.buf, sb.cap);
+        vm_error("readfile() failed: %s", strerror(saved_errno));
+    }
     OStr *s = new_str(sb.buf, (uint32_t)sb.len);
     xfree(sb.buf, sb.cap);
     return vstr_o(s);
@@ -206,11 +213,18 @@ static Value b_writefile(int argc, Value *a) {
                  "(pass --allow-fs to enable readfile / writefile)");
     if (argc != 2 || a[0].t != V_STR) vm_error("writefile() needs a text path and a value");
     OStr *txt = vstr(a[1]);
+    int failed = 0, saved_errno = 0;
+    VX_UNLOCK();          /* txt is rooted on the caller's stack: stable */
     FILE *f = fopen(AS_STR(a[0])->chars, "wb");
-    if (!f) vm_error("writefile() failed: %s", strerror(errno));
-    size_t written = fwrite(txt->chars, 1, txt->len, f);
-    if (written != txt->len || fclose(f) != 0)
-        vm_error("writefile() failed: %s", strerror(errno));
+    if (!f) { failed = 1; saved_errno = errno; }
+    else {
+        size_t written = fwrite(txt->chars, 1, txt->len, f);
+        if (written != txt->len || fclose(f) != 0) {
+            failed = 1; saved_errno = errno;
+        }
+    }
+    VX_LOCK();
+    if (failed) vm_error("writefile() failed: %s", strerror(saved_errno));
     return vnull();
 }
 static Value b_floor(int argc, Value *a) {
@@ -448,7 +462,7 @@ static Value b_sleep(int argc, Value *a) {
     struct timespec ts;
     ts.tv_sec = (time_t)s;
     ts.tv_nsec = (long)((s - (double)ts.tv_sec) * 1e9);
-    nanosleep(&ts, NULL);
+    VX_BLOCKING(nanosleep(&ts, NULL));
     return vnull();
 }
 static Value b_now(int argc, Value *a) {
@@ -472,6 +486,7 @@ Builtin BUILTINS[] = {
     {"pop", b_pop}, {"remove", b_remove}, {"insert", b_insert},
     {"sort", b_sort}, {"reverse", b_reverse}, {"find", b_find},
     {"slice", b_slice}, {"sleep", b_sleep}, {"now", b_now},
+    {"wait", b_wait},
 };
 const size_t NBUILTINS = sizeof BUILTINS / sizeof BUILTINS[0];
 

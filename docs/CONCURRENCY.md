@@ -1,8 +1,8 @@
 # Vidyax Concurrency — Design Document (v1 draft)
 
-Status: **design for review** — nothing here is implemented yet except
-Phase A (the `sleep`/`now` builtins). The keywords `go` and `agent` have
-been reserved since v1.0.
+Status: **Phases A-C shipped** (walker, fast, and the VVM all run
+`go`/`wait`); Phase D (native) remains. The keywords `go` and `agent`
+have been reserved since v1.0.
 
 ## 1. Goals and hard constraints
 
@@ -84,12 +84,16 @@ the reason this document exists before any code.
 
 ## 6. Phases
 
-- **A (done, this commit):** `sleep(secs)` + `now()` builtins on every
-  engine — the timing primitives the model and its tests need.
-- **B:** `go`/`wait` on walker + fast, differential tests for the
+- **A (done):** `sleep(secs)` + `now()` builtins on every engine.
+- **B (done):** `go`/`wait` on walker + fast, differential tests for the
   deterministic subset.
-- **C:** `VmCtx` refactor of the VVM, then `go`/`wait` there.
-- **D:** native backend support.
+- **C (done):** the `VmCtx` refactor — execution state moved into a
+  per-task context (macro-aliased through the thread-local `vx_ctx`, so
+  the dispatch loop reads unchanged); one `vx_gil` mutex, released only
+  inside blocking builtins; GC roots iterate every live context; byte
+  accounting is atomic; `OP_GO` + `vm/task.c`. Verified with the full
+  suite under --gc-stress, ASan, AND ThreadSanitizer.
+- **D:** native backend support (OP_GO is cleanly rejected there today).
 - **E:** `agent` keyword — sugar over tasks for AI workflows (design
   later, on top of a proven task layer).
 
@@ -101,4 +105,4 @@ the reason this document exists before any code.
 3. **No timeout in v1** — `wait(t, max_secs)` and task cancellation are
    v2 questions.
 
-Status: design APPROVED — Phase B (walker + fast) may start.
+Status: design APPROVED; Phases A-C shipped. Next: Phase D (native).

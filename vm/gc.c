@@ -2,25 +2,28 @@
 
 /* allocation + mark-sweep GC (blueprint Bab 5) */
 /* ---- allocation ---- */
+/* byte accounting is ATOMIC: raw buffers (e.g. the HTTP body builder)
+ * may grow while the interpreter lock is released. GC objects
+ * themselves are only ever created while HOLDING the lock. */
 void *xmalloc(size_t n) {
     void *p = malloc(n);
     if (!p) { fprintf(stderr, "[Vidyax] out of memory\n"); exit(1); }
-    mem_used += n;
-    if (max_mem && mem_used > max_mem)
+    size_t used = __atomic_add_fetch(&mem_used, n, __ATOMIC_RELAXED);
+    if (max_mem && used > max_mem)
         vm_error("VM PANIC: memory limit exceeded (%zu bytes)", max_mem);
     return p;
 }
 void *xrealloc(void *old, size_t oldn, size_t newn) {
     void *p = realloc(old, newn);
     if (!p) { fprintf(stderr, "[Vidyax] out of memory\n"); exit(1); }
-    mem_used += newn - oldn;
-    if (max_mem && mem_used > max_mem)
+    size_t used = __atomic_add_fetch(&mem_used, newn - oldn, __ATOMIC_RELAXED);
+    if (max_mem && used > max_mem)
         vm_error("VM PANIC: memory limit exceeded (%zu bytes)", max_mem);
     return p;
 }
 void xfree(void *p, size_t n) {
     free(p);
-    mem_used -= n;
+    __atomic_sub_fetch(&mem_used, n, __ATOMIC_RELAXED);
 }
 Obj *alloc_obj(size_t size, OType t) {
     Obj *o = xmalloc(size);
@@ -87,6 +90,12 @@ static void mark_obj(Obj *o) {
     case O_BOUND:
         mark_obj((Obj *)((OBound *)o)->self);
         break;
+    case O_TASK: {
+        OTask *t = (OTask *)o;
+        mark_obj((Obj *)t->name);
+        mark_value(t->result);
+        break;
+    }
     case O_ENV: {
         Env *e = (Env *)o;
         for (uint32_t i = 0; i < e->count; i++) {
@@ -101,35 +110,42 @@ static void mark_obj(Obj *o) {
 static void mark_value(Value v) {
     /* V_BUILTIN points into a static table, not the GC heap */
     if (v.t == V_STR || v.t == V_LIST || v.t == V_FUNC ||
-        v.t == V_AI || v.t == V_BOUND)
+        v.t == V_AI || v.t == V_BOUND || v.t == V_TASK)
         mark_obj(v.as.o);
 }
 static void free_obj(Obj *o) {   /* mirrors every byte alloc counted */
     switch (o->type) {
     case O_STR: {
         OStr *s = (OStr *)o;
-        mem_used -= sizeof(OStr) + s->len + 1;
+        __atomic_sub_fetch(&mem_used, sizeof(OStr) + s->len + 1, __ATOMIC_RELAXED);
         free(s->chars);
         break;
     }
     case O_LIST: {
         OList *l = (OList *)o;
-        mem_used -= sizeof(OList) + l->cap * sizeof(Value);
+        __atomic_sub_fetch(&mem_used, sizeof(OList) + l->cap * sizeof(Value), __ATOMIC_RELAXED);
         free(l->items);
         break;
     }
     case O_FUNC:
-        mem_used -= sizeof(OFunc);
+        __atomic_sub_fetch(&mem_used, sizeof(OFunc), __ATOMIC_RELAXED);
         break;
     case O_AI:
-        mem_used -= sizeof(OAI);
+        __atomic_sub_fetch(&mem_used, sizeof(OAI), __ATOMIC_RELAXED);
         break;
     case O_BOUND:
-        mem_used -= sizeof(OBound);
+        __atomic_sub_fetch(&mem_used, sizeof(OBound), __ATOMIC_RELAXED);
         break;
+    case O_TASK: {   /* only ever swept after it was joined */
+        OTask *t = (OTask *)o;
+        __atomic_sub_fetch(&mem_used, sizeof(OTask), __ATOMIC_RELAXED);
+        free(t->ctx);        /* plain calloc — outside the accounting */
+        free(t->errtext);
+        break;
+    }
     case O_ENV: {
         Env *e = (Env *)o;
-        mem_used -= sizeof(Env) + e->cap * sizeof(EnvEntry);
+        __atomic_sub_fetch(&mem_used, sizeof(Env) + e->cap * sizeof(EnvEntry), __ATOMIC_RELAXED);
         free(e->entries);
         break;
     }
@@ -139,8 +155,17 @@ static void free_obj(Obj *o) {   /* mirrors every byte alloc counted */
 void gc(void) {
     gc_pending = 0;
     for (uint32_t i = 0; i < nconsts; i++) mark_value(consts[i]);
-    for (int i = 0; i < sp; i++) mark_value(stack[i]);
-    for (int f = 0; f < nframes; f++) mark_obj((Obj *)frames[f].env);
+    /* roots: EVERY execution context (main + all tasks), frozen while we
+     * hold the interpreter lock */
+    for (VmCtx *c = vx_all_ctxs; c; c = c->next) {
+        for (int i = 0; i < c->x_sp; i++) mark_value(c->x_stack[i]);
+        for (int f = 0; f < c->x_nframes; f++)
+            mark_obj((Obj *)c->x_frames[f].env);
+    }
+    {   /* live tasks are roots too (handle may have been dropped) */
+        int nt; OTask **ts = vx_live_tasks(&nt);
+        for (int i = 0; i < nt; i++) mark_obj((Obj *)ts[i]);
+    }
     Obj **p = &all_objs;
     while (*p) {
         if ((*p)->mark) {

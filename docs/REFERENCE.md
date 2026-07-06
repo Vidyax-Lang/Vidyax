@@ -254,8 +254,8 @@ interleave **only while waiting on I/O** (`get`, `ai.ask`, files,
 `sleep`) — pure computation never interleaves, so data races are
 impossible. An error inside a task re-raises at its `wait(t)` (catchable
 with try/catch); a failed task nobody waited for is reported when the
-program ends. Design + roadmap: `docs/CONCURRENCY.md`. Currently on the
-default engine and the walker; VM/native support is Phase C.
+program ends. Design + roadmap: `docs/CONCURRENCY.md`. Runs on the default
+engine, the walker, AND the VVM; the native backend is Phase D.
 
 The names above are *reserved* — they cannot be overwritten.
 

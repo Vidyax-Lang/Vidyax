@@ -8,11 +8,17 @@ Value  *consts;   uint32_t nconsts;
 Proto  *protos;   uint32_t nprotos;
 Obj    *all_objs = NULL;   /* GC-ready allocation list */
 
-Value   stack[STACK_MAX];   int sp = 0;
-Frame   frames[FRAMES_MAX]; int nframes = 0;
-Handler handlers[HANDLERS_MAX]; int nhandlers = 0;
-jmp_buf err_jmp;
-char    errmsg[1024];
+/* execution contexts: the main program owns one; every task adds one */
+static VmCtx main_ctx;
+_Thread_local VmCtx *vx_ctx = NULL;
+VmCtx *vx_all_ctxs = NULL;
+pthread_mutex_t vx_gil = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t  vx_task_done = PTHREAD_COND_INITIALIZER;
+
+void vx_register_ctx(VmCtx *c) {
+    c->next = vx_all_ctxs;
+    vx_all_ctxs = c;
+}
 
 /* ---- sandbox (blueprint Bab 4): 0 = unlimited ---- */
 uint64_t max_instr = 0, instr_count = 0;
@@ -27,8 +33,7 @@ int      gc_pending = 0, gc_stress = 0, gc_stats = 0;
 uint64_t gc_runs = 0;
 size_t   peak_mem = 0;
 
-/* ---- error ---- */
-int jmp_armed = 0;
+/* ---- error (errmsg/jmp are per-ctx via the vx.h macros) ---- */
 void vm_error(const char *fmt, ...) {
     va_list ap; va_start(ap, fmt);
     vsnprintf(errmsg, sizeof errmsg, fmt, ap);
@@ -44,6 +49,8 @@ static void push(Value v) {
 static Value pop(void) { return stack[--sp]; }
 
 static void run(void) {
+    vx_ctx = &main_ctx;
+    vx_register_ctx(&main_ctx);
     Env *global = new_env(NULL, NULL);
     /* register only the builtins the program can actually name */
     for (size_t b = 0; b < NBUILTINS; b++)
@@ -63,16 +70,26 @@ static void run(void) {
     for (int i = 0; i < protos[0].nslots; i++)
         push(vunset());
     nframes = 1;
+    vx_run_loop();
+}
 
+/* The dispatch loop. Also the execution engine for tasks: task.c gives a
+ * child ctx one call frame and runs this until that frame returns
+ * (nframes hits 0). Uncaught errors kill the process only on the main
+ * ctx; a task ctx records the failure and returns to its worker. */
+void vx_run_loop(void) {
     jmp_armed = 1;
     if (setjmp(err_jmp)) {
         /* runtime error: unwind to the innermost try handler, or die */
         if (nhandlers > 0) {
             Handler h = handlers[--nhandlers];
             nframes = h.frame + 1;
-            sp = h.sp;
+            sp = h.saved_sp;
             frames[nframes - 1].ip = h.catch_ip;
             push(vstr_o(new_str(errmsg, (uint32_t)strlen(errmsg))));
+        } else if (vx_ctx->is_task) {
+            vx_ctx->failed = 1;   /* errmsg already holds the text */
+            return;
         } else {
             printf("[Vidyax] %s\n", errmsg);
             exit(1);
@@ -273,6 +290,13 @@ static void run(void) {
             sp = frames[nframes - 1].base;
             nframes--;
             push(r);
+            if (nframes == 0)
+                return;   /* a task's entry call returned: result on top */
+            break;
+        }
+        case OP_GO: {
+            uint8_t argc = code[fr->ip++];
+            task_spawn(argc);
             break;
         }
         case OP_PRINT: {
@@ -287,7 +311,8 @@ static void run(void) {
             fputc(' ', stdout);
             fflush(stdout);
             char *line = NULL; size_t cap = 0;
-            ssize_t n = getline(&line, &cap, stdin);
+            ssize_t n;
+            VX_BLOCKING(n = getline(&line, &cap, stdin));
             if (n < 0) { free(line); vm_error("input ended"); }
             while (n > 0 && (line[n - 1] == '\n' || line[n - 1] == '\r')) n--;
             push(vstr_o(new_str(line, (uint32_t)n)));
@@ -316,7 +341,7 @@ static void run(void) {
             uint32_t t; memcpy(&t, code + fr->ip, 4); fr->ip += 4;
             if (nhandlers >= HANDLERS_MAX) vm_error("too many nested try");
             handlers[nhandlers].frame = nframes - 1;
-            handlers[nhandlers].sp = sp;
+            handlers[nhandlers].saved_sp = sp;
             handlers[nhandlers].catch_ip = t;
             nhandlers++;
             break;
@@ -325,6 +350,7 @@ static void run(void) {
             nhandlers--;
             break;
         case OP_HALT:
+            tasks_finish();   /* join every task; report unwaited errors */
             if (gc_stats)
                 fprintf(stderr, "[vxvm] gc runs: %llu, peak mem: %zu bytes, "
                         "live at exit: %zu bytes\n",
@@ -379,8 +405,10 @@ int main(int argc, char **argv) {
 #ifdef VX_HAVE_CURL
     curl_global_init(CURL_GLOBAL_DEFAULT);
 #endif
+    VX_LOCK();          /* the interpreter lock; I/O builtins release it */
     start_clock = clock();
     run();
+    VX_UNLOCK();
 #ifdef VX_HAVE_CURL
     curl_global_cleanup();
 #endif

@@ -6,9 +6,8 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 
 ## Prioritas berikutnya
 
-1. **Concurrency Fase C-D** — `go`/`wait` SUDAH hidup di walker + fast
-   (Fase B). Berikutnya: refactor `VmCtx` di VVM (Fase C) lalu native (D).
-   Desain: `docs/CONCURRENCY.md`.
+1. **Concurrency Fase D** — `go`/`wait` sudah hidup di walker + fast + VVM
+   (Fase A-C). Tersisa: native backend. Desain: `docs/CONCURRENCY.md`.
 
 ## Ide lain (belum diprioritaskan)
 
@@ -21,6 +20,11 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 
 ### v1.3
 
+- Concurrency Fase C: VVM ikut menjalankan `go`/`wait` — refactor `VmCtx`
+  (state eksekusi per-task, alias makro via thread-local `vx_ctx` ala Lua),
+  GIL `vx_gil` dilepas hanya di builtin I/O, GC me-root semua ctx, akuntansi
+  byte atomik, opcode `OP_GO` + modul `vm/task.c`. Hijau di gc-stress, ASan,
+  DAN ThreadSanitizer; 2 ai.ask live paralel di VM 1,6 dtk (CPU 0,04 dtk).
 - Concurrency Fase B: `t: go f(x)` / `wait(t)` hidup di walker + fast —
   task paralel dengan model GIL (interleave hanya saat I/O; data race
   mustahil). Error task muncul ulang di wait (catchable); task gagal tanpa

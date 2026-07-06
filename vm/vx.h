@@ -16,6 +16,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <math.h>
+#include <pthread.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -36,11 +37,13 @@ enum {
     OP_TRY_PUSH, OP_TRY_POP, OP_HALT,
     OP_LOAD_SLOT, OP_STORE_SLOT,
     OP_AI_NEW, OP_GET_MEMBER,
+    OP_GO,   /* u8 argc — run the call as a task (docs/CONCURRENCY.md) */
 };
 
 /* ---- values & objects ---- */
 typedef enum { V_NULL, V_BOOL, V_NUM, V_STR, V_LIST, V_FUNC, V_BUILTIN,
                V_AI, V_BOUND, /* ai module object + bound method */
+               V_TASK,        /* a `go` task */
                V_UNSET /* internal: slot declared but not yet assigned */ } VType;
 typedef struct Obj Obj;
 typedef struct Value {
@@ -48,7 +51,8 @@ typedef struct Value {
     union { int b; double n; Obj *o; } as;
 } Value;
 
-typedef enum { O_STR, O_LIST, O_FUNC, O_ENV, O_AI, O_BOUND } OType;
+typedef enum { O_STR, O_LIST, O_FUNC, O_ENV, O_AI, O_BOUND,
+               O_TASK /* a `go` task (docs/CONCURRENCY.md, Phase C) */ } OType;
 struct Obj {           /* common header; `next`+`mark` reserved for GC */
     OType type;
     Obj  *next;
@@ -87,6 +91,19 @@ struct Env {
 
 typedef struct { Obj h; Proto *proto; Env *closure; } OFunc;
 
+/* a `go` task: thread + captured outcome. GC marks `result` and the
+ * callee/args while running (they sit in the child ctx's stack). */
+typedef struct OTask {
+    Obj h;
+    OStr *name;
+    pthread_t thread;
+    int   started, done, waited, joined;
+    Value result;
+    char *errtext;            /* plain malloc; freed with the task */
+    struct VmCtx *ctx;        /* child execution context (plain malloc) */
+} OTask;
+#define AS_TASK(v) ((OTask *)(v).as.o)
+
 /* ai module object (mirrors vidyax.py _AI) + a method bound to one */
 enum { PROV_GROQ = 0, PROV_OPENAI = 1 };
 enum { AIM_OPEN = 0, AIM_SYSTEM = 1, AIM_ASK = 2 };
@@ -112,18 +129,51 @@ typedef struct { char *buf; size_t len, cap; } SB;
 #define HANDLERS_MAX 256
 
 typedef struct { Proto *proto; uint32_t ip; Env *env; int base; } Frame;
-typedef struct { int frame; int sp; uint32_t catch_ip; } Handler;
+typedef struct { int frame; int saved_sp; uint32_t catch_ip; } Handler;
+
+/* One execution context per task (the main program is task 0). All the
+ * code below still says `stack`, `sp`, `frames`, ... — the macros after
+ * this struct redirect those names through the thread-local `vx_ctx`,
+ * so the whole VM became multi-context without rewriting every line
+ * (the same trick Lua's `L` uses, spelled with macros). */
+typedef struct VmCtx {          /* members are x_-prefixed: the macros
+                                    below alias the bare names to the
+                                    CURRENT thread's ctx, so explicit
+                                    accesses (c->x_sp) never collide */
+    Value   x_stack[STACK_MAX];   int x_sp;
+    Frame   x_frames[FRAMES_MAX]; int x_nframes;
+    Handler x_handlers[HANDLERS_MAX]; int x_nhandlers;
+    jmp_buf x_err_jmp;
+    char    x_errmsg[1024];
+    int     x_jmp_armed;
+    int     is_task;            /* uncaught error: task records, main dies */
+    int     failed;             /* set when a task ends with an error */
+    struct VmCtx *next;         /* GC root registry (vx_all_ctxs) */
+} VmCtx;
+
+extern _Thread_local VmCtx *vx_ctx;   /* this thread's context */
+extern VmCtx *vx_all_ctxs;            /* every live ctx — GC roots */
+extern pthread_mutex_t vx_gil;        /* THE interpreter lock */
+extern pthread_cond_t  vx_task_done;  /* signaled when any task finishes */
+
+#define VX_LOCK()   pthread_mutex_lock(&vx_gil)
+#define VX_UNLOCK() pthread_mutex_unlock(&vx_gil)
+/* release the lock around a blocking syscall (I/O builtins only) */
+#define VX_BLOCKING(stmt) do { VX_UNLOCK(); stmt; VX_LOCK(); } while (0)
+
+#define stack     (vx_ctx->x_stack)
+#define sp        (vx_ctx->x_sp)
+#define frames    (vx_ctx->x_frames)
+#define nframes   (vx_ctx->x_nframes)
+#define handlers  (vx_ctx->x_handlers)
+#define nhandlers (vx_ctx->x_nhandlers)
+#define err_jmp   (vx_ctx->x_err_jmp)
+#define errmsg    (vx_ctx->x_errmsg)
+#define jmp_armed (vx_ctx->x_jmp_armed)
 
 extern Value  *consts;   extern uint32_t nconsts;
 extern Proto  *protos;   extern uint32_t nprotos;
 extern Obj    *all_objs;          /* GC allocation list */
-
-extern Value   stack[STACK_MAX];   extern int sp;
-extern Frame   frames[FRAMES_MAX]; extern int nframes;
-extern Handler handlers[HANDLERS_MAX]; extern int nhandlers;
-extern jmp_buf err_jmp;
-extern char    errmsg[1024];
-extern int     jmp_armed;
 
 /* sandbox (blueprint Bab 4): 0 = unlimited */
 extern uint64_t max_instr, instr_count;
@@ -197,6 +247,15 @@ extern const size_t NBUILTINS;
 void load(const char *path);
 void verify(void);
 uint32_t line_for(const Proto *p, uint32_t ip);
+
+/* ---- task.c (`go` / wait — Phase C) ---- */
+void  vx_register_ctx(VmCtx *c);
+void  vx_run_loop(void);               /* dispatch loop (vm.c) */
+void  task_spawn(int argc);            /* OP_GO: callee+args on the stack */
+Value b_wait(int argc, Value *args);
+void  tasks_finish(void);              /* end of program: join everything */
+OTask **vx_live_tasks(int *n);         /* GC roots: running tasks */
+extern int vx_tasks_live;              /* running tasks (main excluded) */
 
 /* ---- debug.c (--debug) ---- */
 extern int vx_debug;

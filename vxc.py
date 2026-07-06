@@ -155,6 +155,7 @@ OPS = {
     "STORE_SLOT": 39,  # u16 slot index
     "AI_NEW": 40,      # push a fresh 'ai' module object
     "GET_MEMBER": 41,  # u16 const idx (member name str); pops obj, pushes member
+    "GO": 42,          # u8 argc — run the call as a task (docs/CONCURRENCY.md)
 }
 
 
@@ -403,7 +404,7 @@ def _fold(n):
 _OPSIZE = {
     OPS["CONST"]: 2, OPS["LOAD"]: 2, OPS["STORE"]: 2,
     OPS["LOAD_SLOT"]: 2, OPS["STORE_SLOT"]: 2, OPS["GET_MEMBER"]: 2,
-    OPS["LIST"]: 2, OPS["MAKE_FUNC"]: 2, OPS["CALL"]: 1,
+    OPS["LIST"]: 2, OPS["MAKE_FUNC"]: 2, OPS["CALL"]: 1, OPS["GO"]: 1,
     OPS["JMP"]: 4, OPS["JMP_IF_FALSE"]: 4,
     OPS["JIF_PEEK"]: 4, OPS["JIT_PEEK"]: 4, OPS["TRY_PUSH"]: 4,
 }
@@ -696,9 +697,14 @@ class Compiler:
         n = _fold(n)
         t = type(n).__name__
         if t == "GoTask":
-            raise VidyaxError(
-                "'go' runs on the default engine for now — VM/native "
-                "support is Phase C of docs/CONCURRENCY.md", n.line)
+            call = n.call
+            self.expr(p, call.callee, ctx)
+            for a in call.args:
+                self.expr(p, a, ctx)
+            if len(call.args) > 255:
+                raise VidyaxError("too many arguments")
+            self.emit(p, "GO", ("B", len(call.args)))
+            return
         if t == "Number":
             self.emit(p, "CONST", ("H", self.cnum(n.v)))
         elif t == "Str":

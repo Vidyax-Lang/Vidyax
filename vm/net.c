@@ -241,7 +241,9 @@ static Value ai_ask(OAI *self, OStr *prompt) {
 
     SB resp; sb_init(&resp);
     long code = 0; char err[256];
-    int rc = http_request(url, key, body.buf, &resp, &code, err, sizeof err);
+    int rc;
+    VX_BLOCKING(rc = http_request(url, key, body.buf, &resp, &code,
+                                  err, sizeof err));
     xfree(body.buf, body.cap);
     if (rc != 0) {
         char e[300]; snprintf(e, sizeof e, "%s", err);

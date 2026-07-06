@@ -1,8 +1,8 @@
 CC      ?= cc
 CFLAGS  ?= -O2 -Wall -Wextra
-LDFLAGS ?= -lm
+LDFLAGS ?= -lm -lpthread
 
-SRCS := vm.c value.c gc.c net.c builtins.c loader.c debug.c profile.c
+SRCS := vm.c value.c gc.c net.c builtins.c loader.c debug.c profile.c task.c
 
 # libcurl backs ai.ask() and get(). Auto-detected via pkg-config; force off
 # with `make CURL=0` to build the stub (both raise a catchable error).
