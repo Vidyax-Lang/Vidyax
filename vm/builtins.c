@@ -153,9 +153,7 @@ static Value b_type(int argc, Value *a) {
     return vstr_o(new_str(n, (uint32_t)strlen(n)));
 }
 static Value b_get(int argc, Value *a) {
-    if (!allow_net)
-        vm_error("network access is not allowed "
-                 "(pass --allow-net to enable ai.ask / get)");
+    need_net();
 #ifndef VX_HAVE_CURL
     (void)argc; (void)a;
     vm_error("get() needs libcurl (rebuild vxvm with libcurl available)");
@@ -183,9 +181,7 @@ static Value b_get(int argc, Value *a) {
 }
 
 static Value b_readfile(int argc, Value *a) {
-    if (!allow_fs)
-        vm_error("file access is not allowed "
-                 "(pass --allow-fs to enable readfile / writefile)");
+    need_fs();
     if (argc != 1 || a[0].t != V_STR) vm_error("readfile() needs a text path");
     SB sb; sb_init(&sb);
     FILE *f; int failed = 0, saved_errno = 0;
@@ -208,9 +204,7 @@ static Value b_readfile(int argc, Value *a) {
     return vstr_o(s);
 }
 static Value b_writefile(int argc, Value *a) {
-    if (!allow_fs)
-        vm_error("file access is not allowed "
-                 "(pass --allow-fs to enable readfile / writefile)");
+    need_fs();
     if (argc != 2 || a[0].t != V_STR) vm_error("writefile() needs a text path and a value");
     OStr *txt = vstr(a[1]);
     int failed = 0, saved_errno = 0;

@@ -116,6 +116,24 @@ OStr *vstr(Value v) {
     return s;
 }
 
+/* ---- capability checks (sandbox) ---- */
+void need_net(void) {
+    if (vx_ctx->perms & PERM_NET) return;
+    if (allow_net)   /* the flag granted it, so a sandbox removed it */
+        vm_error("network access is not allowed here "
+                 "(blocked by 'sandbox deny net')");
+    vm_error("network access is not allowed "
+             "(pass --allow-net to enable ai.ask / get)");
+}
+void need_fs(void) {
+    if (vx_ctx->perms & PERM_FS) return;
+    if (allow_fs)
+        vm_error("file access is not allowed here "
+                 "(blocked by 'sandbox deny fs')");
+    vm_error("file access is not allowed "
+             "(pass --allow-fs to enable readfile / writefile)");
+}
+
 /* ---- semantics helpers ---- */
 int truthy(Value v) {
     switch (v.t) {

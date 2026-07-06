@@ -126,6 +126,35 @@ CASES = [
     # stdlib: time (Phase A of the concurrency design, docs/CONCURRENCY.md)
     ('t0: now()\nsleep(0.01)\nd: now() - t0\nprint d >= 0.01 and d < 10\n'
      'print type(now())\n', "true\nnumber\n"),
+    # sandbox (capability model): denies are scoped, restored on ANY exit
+    # (end of block, caught error, return, break), inherited by tasks
+    ('sandbox deny fs:\n    try:\n        writefile("/tmp/x.txt", "a")\n'
+     '    catch e:\n        print e\n    print "hidup"\n',
+     "file access is not allowed here (blocked by 'sandbox deny fs')\n"
+     "hidup\n"),
+    ('sandbox deny net, fs:\n    try:\n        x: get("https://x.y")\n'
+     '    catch e:\n        print e\n',
+     "network access is not allowed here (blocked by 'sandbox deny net')\n"),
+    # perms restored after return/break crossing the sandbox
+    ('func f():\n    sandbox deny fs:\n        return "r"\nprint f()\n'
+     'writefile("/tmp/vx_sb.txt", "ok")\nprint readfile("/tmp/vx_sb.txt")\n',
+     "r\nok\n"),
+    ('rpt 2:\n    sandbox deny fs:\n        break\n'
+     'writefile("/tmp/vx_sb.txt", "ok2")\nprint readfile("/tmp/vx_sb.txt")\n',
+     "ok2\n"),
+    # nesting only tightens; inner exit restores to the OUTER sandbox
+    ('sandbox deny net:\n    sandbox deny fs:\n'
+     '        try:\n            writefile("/t", "x")\n'
+     '        catch e:\n            print "fs mati"\n'
+     '    try:\n        x: get("https://x.y")\n'
+     '    catch e:\n        print "net masih mati"\n',
+     "fs mati\nnet masih mati\n"),
+    # a task spawned inside carries the denial for its whole life
+    ('func tulis():\n    writefile("/tmp/vx_sb.txt", "t")\n    return "ok"\n'
+     'sandbox deny fs:\n    t: go tulis()\n'
+     '    try:\n        print wait(t)\n'
+     '    catch e:\n        print "task tersekat"\n',
+     "task tersekat\n"),
     # stdlib: files (the VM needs --allow-fs; tests_vm.py passes it)
     ('writefile("/tmp/vx_selftest.txt", "abc")\nprint readfile("/tmp/vx_selftest.txt")\n', "abc\n"),
     ('print writefile("/tmp/vx_selftest.txt", 123)\nprint readfile("/tmp/vx_selftest.txt")\n', "null\n123\n"),

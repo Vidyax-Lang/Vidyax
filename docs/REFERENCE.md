@@ -328,6 +328,27 @@ Running with no arguments opens the interactive REPL:
 
 Roadmap commands (recognized but not yet runnable): `fmt`.
 
+### Sandbox (`sandbox deny ...`)
+
+```vidyax
+sandbox deny fs:
+    jawaban: agenku("ringkas data ini")   # AI boleh (net), file TIDAK
+    ...
+sandbox deny net, fs:
+    ...pure text processing, no authority at all...
+```
+
+`sandbox deny net` and/or `fs:` runs a block with capabilities
+**removed**: `net` blocks `get`/`ai.ask`/agents, `fs` blocks
+`readfile`/`writefile`. A sandbox can only *reduce* permissions — nesting
+tightens further, and leaving the block (normally, via a caught error,
+`return`, or `break`) restores the outer set. Functions *called* inside
+are restricted too (the capability travels with control flow), and a
+task spawned inside (`go`) carries the reduced set for its whole life.
+Use one sandbox per agent's work zone so a hallucinating or
+prompt-injected reply can never trick that code path into touching files
+or the network beyond what you granted it.
+
 ### Agents (`agent`)
 
 ```vidyax

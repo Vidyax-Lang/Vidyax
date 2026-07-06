@@ -266,9 +266,7 @@ static void body_msg(SB *body, const char *role, OStr *content, int first) {
 #endif
 
 static Value ai_ask(OAI *self, OStr *prompt) {
-    if (!allow_net)
-        vm_error("network access is not allowed "
-                 "(pass --allow-net to enable ai.ask / get)");
+    need_net();
 #ifndef VX_HAVE_CURL
     (void)self; (void)prompt;
     vm_error("ai.ask needs libcurl (rebuild vxvm with libcurl available)");
@@ -299,9 +297,7 @@ OAgent *new_agent(OStr *name, Value model, Value system) {
 }
 
 Value agent_ask(OAgent *a, OStr *prompt) {
-    if (!allow_net)
-        vm_error("network access is not allowed "
-                 "(pass --allow-net to enable ai.ask / get)");
+    need_net();
 #ifndef VX_HAVE_CURL
     (void)a; (void)prompt;
     vm_error("agents need libcurl (rebuild vxvm with libcurl available)");

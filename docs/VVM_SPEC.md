@@ -124,8 +124,15 @@ vxvm --max-instr 50000000 --max-mem 268435456 --max-time 5 prog.vxc
 - **Permission control** — the VVM has no subprocess opcodes. Every
   outbound capability sits behind an explicit flag and is denied by
   default, raising a catchable error unless the flag is passed:
-  HTTP (`get()`, `ai.ask`) behind **`--allow-net`**, and file access
-  (`readfile()`, `writefile()`) behind **`--allow-fs`**.
+  HTTP (`get()`, `ai.ask`, agents) behind **`--allow-net`**, and file
+  access (`readfile()`, `writefile()`) behind **`--allow-fs`**.
+- **In-language capability sandbox** — `sandbox deny net, fs:` clears
+  permission bits in the current execution context (`VmCtx.perms`);
+  `OP_SBOX_ENTER`/`OP_SBOX_EXIT` maintain a per-ctx save stack that is
+  unwound correctly on `return` (per frame), on caught errors (each
+  Handler records the sandbox depth), and on `break`/`continue` (the
+  compiler emits the exits). Tasks inherit the spawner's bits at `go`
+  time. A sandbox can only reduce permissions, never add.
 - **Debugger** — `vxvm --debug prog.vxc` (or `vidyax debug prog.vx`):
   an interactive line debugger in `vm/debug.c`, driven by the v3 line
   table. Pauses on the first line; `b N`/`d N` breakpoints, `c`

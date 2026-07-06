@@ -88,6 +88,8 @@ def _refs_in(stmts):
             for x in s.body: st(x)   # descend: nested-nested captures count
         elif t == "AgentDef":
             ex(s.model); ex(s.system); out.add(s.name)
+        elif t == "Sandbox":
+            for x in s.body: st(x)
         elif t == "Return":
             ex(s.value)
         elif t == "Import":
@@ -122,6 +124,8 @@ def escaping_names(body):
                 walk(s.body)
             elif t == "TryCatch":
                 walk(s.try_body); walk(s.catch_body)
+            elif t == "Sandbox":
+                walk(s.body)
 
     walk(body)
     return caught
@@ -159,6 +163,8 @@ OPS = {
     "GET_MEMBER": 41,  # u16 const idx (member name str); pops obj, pushes member
     "GO": 42,          # u8 argc — run the call as a task (docs/CONCURRENCY.md)
     "AGENT": 43,       # pops system, model, name -> pushes an agent
+    "SBOX_ENTER": 44,  # u8 deny mask (1=net, 2=fs) — reduce ctx perms
+    "SBOX_EXIT": 45,   # restore perms saved by the matching ENTER
 }
 
 
@@ -283,6 +289,8 @@ def _collect_candidates(ast):
                 scan_stmts(s.body)
             elif t == "TryCatch":
                 scan_stmts(s.try_body); scan_stmts(s.catch_body)
+            elif t == "Sandbox":
+                scan_stmts(s.body)
 
     scan_stmts(ast.body)
 
@@ -355,6 +363,8 @@ def _inline_program(ast):
                 rw_stmts(s.body)
             elif t == "TryCatch":
                 rw_stmts(s.try_body); rw_stmts(s.catch_body)
+            elif t == "Sandbox":
+                rw_stmts(s.body)
 
     rw_stmts(ast.body)
     return ast
@@ -408,6 +418,7 @@ _OPSIZE = {
     OPS["CONST"]: 2, OPS["LOAD"]: 2, OPS["STORE"]: 2,
     OPS["LOAD_SLOT"]: 2, OPS["STORE_SLOT"]: 2, OPS["GET_MEMBER"]: 2,
     OPS["LIST"]: 2, OPS["MAKE_FUNC"]: 2, OPS["CALL"]: 1, OPS["GO"]: 1,
+    OPS["SBOX_ENTER"]: 1,
     OPS["JMP"]: 4, OPS["JMP_IF_FALSE"]: 4,
     OPS["JIF_PEEK"]: 4, OPS["JIT_PEEK"]: 4, OPS["TRY_PUSH"]: 4,
 }
@@ -513,7 +524,7 @@ class Compiler:
         main.slots = list(main.safe)
         main.slot_of = {name: i for i, name in enumerate(main.slots)}
         self.protos.append(main)
-        ctx = {"loops": [], "trydepth": 0, "hidden": 0}
+        ctx = {"loops": [], "trydepth": 0, "sboxdepth": 0, "hidden": 0}
         self.block(main, ast.body, ctx)
         self.emit(main, "HALT")
         return self
@@ -633,12 +644,21 @@ class Compiler:
             ix = len(self.protos) - 1
             if ix > 0xFFFF:
                 raise VidyaxError("too many functions")
-            subctx = {"loops": [], "trydepth": 0, "hidden": 0}
+            subctx = {"loops": [], "trydepth": 0, "sboxdepth": 0, "hidden": 0}
             self.block(sub, n.body, subctx)
             self.emit(sub, "NULL")   # falling off the end returns null
             self.emit(sub, "RET")
             self.emit(p, "MAKE_FUNC", ("H", ix))
             self.name_store(p, n.name)
+        elif t == "Sandbox":
+            mask = 0
+            for d in n.denies:
+                mask |= 1 if d == "net" else 2
+            self.emit(p, "SBOX_ENTER", ("B", mask))
+            ctx["sboxdepth"] += 1
+            self.block(p, n.body, ctx)
+            ctx["sboxdepth"] -= 1
+            self.emit(p, "SBOX_EXIT")
         elif t == "AgentDef":
             # push name, model(or null), system(or null); AGENT builds it
             self.emit(p, "CONST", ("H", self.cstr(n.name)))
@@ -692,7 +712,8 @@ class Compiler:
 
     def loop_body(self, p, body, ctx, loop_start, jend_patch):
         ctx["loops"].append({"start": loop_start, "breaks": [],
-                             "trydepth": ctx["trydepth"]})
+                             "trydepth": ctx["trydepth"],
+                             "sboxdepth": ctx["sboxdepth"]})
         self.block(p, body, ctx)
         self.emit(p, "JMP")
         p.code += struct.pack("<I", loop_start)
@@ -702,11 +723,12 @@ class Compiler:
             self.patch(p, b)
 
     def pop_tries_to_loop(self, p, ctx):
-        """break/continue that jump out of try blocks must pop handlers."""
-        depth_here = ctx["trydepth"]
-        depth_loop = ctx["loops"][-1]["trydepth"]
-        for _ in range(depth_here - depth_loop):
+        """break/continue that jump out of try/sandbox blocks must pop
+        their handlers / restore their permissions first."""
+        for _ in range(ctx["trydepth"] - ctx["loops"][-1]["trydepth"]):
             self.emit(p, "TRY_POP")
+        for _ in range(ctx["sboxdepth"] - ctx["loops"][-1]["sboxdepth"]):
+            self.emit(p, "SBOX_EXIT")
 
     # --- expressions ---
     def expr(self, p, n, ctx):

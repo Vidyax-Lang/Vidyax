@@ -39,7 +39,13 @@ enum {
     OP_AI_NEW, OP_GET_MEMBER,
     OP_GO,     /* u8 argc — run the call as a task (docs/CONCURRENCY.md) */
     OP_AGENT,  /* pops system, model, name -> pushes a stateful agent */
+    OP_SBOX_ENTER,  /* u8 deny mask (1=net, 2=fs): reduce ctx perms */
+    OP_SBOX_EXIT,   /* restore the perms saved by the matching ENTER */
 };
+
+/* capability bits (VmCtx.perms). `sandbox deny ...` can only CLEAR them */
+#define PERM_NET 1
+#define PERM_FS  2
 
 /* ---- values & objects ---- */
 typedef enum { V_NULL, V_BOOL, V_NUM, V_STR, V_LIST, V_FUNC, V_BUILTIN,
@@ -136,7 +142,10 @@ typedef struct { char *buf; size_t len, cap; } SB;
 #define HANDLERS_MAX 256
 
 typedef struct { Proto *proto; uint32_t ip; Env *env; int base; } Frame;
-typedef struct { int frame; int saved_sp; uint32_t catch_ip; } Handler;
+typedef struct { int frame; int saved_sp; int saved_nsbox;
+                 uint32_t catch_ip; } Handler;
+typedef struct { uint8_t saved; int frame; } SboxEntry;
+#define SBOX_MAX 64
 
 /* One execution context per task (the main program is task 0). All the
  * code below still says `stack`, `sp`, `frames`, ... — the macros after
@@ -153,6 +162,8 @@ typedef struct VmCtx {          /* members are x_-prefixed: the macros
     jmp_buf x_err_jmp;
     char    x_errmsg[1024];
     int     x_jmp_armed;
+    uint8_t perms;              /* capability bits (PERM_NET | PERM_FS) */
+    SboxEntry x_sbox[SBOX_MAX]; int x_nsbox;   /* active sandbox blocks */
     int     is_task;            /* uncaught error: task records, main dies */
     int     failed;             /* set when a task ends with an error */
     struct VmCtx *next;         /* GC root registry (vx_all_ctxs) */
@@ -238,6 +249,8 @@ int   values_eq(Value a, Value b);
 int   values_cmp(Value a, Value b);
 Value do_add(Value a, Value b);
 Value do_index(Value o, Value iv);
+void  need_net(void);   /* raise unless the current ctx may use the net */
+void  need_fs(void);    /* raise unless the current ctx may use files  */
 
 /* ---- net.c ---- */
 int   http_request(const char *url, const char *auth, const char *body,

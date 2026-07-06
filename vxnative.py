@@ -66,7 +66,7 @@ int      gc_pending = 0, gc_stress = 0, gc_stats = 0;
 uint64_t gc_runs = 0;
 
 /* ---- native try/catch: one setjmp per `try`, owned by its frame ---- */
-typedef struct { jmp_buf buf; int frame, saved_sp; } NTry;
+typedef struct { jmp_buf buf; int frame, saved_sp, saved_nsbox; } NTry;
 static _Thread_local NTry ntry[HANDLERS_MAX];   /* per task */
 static _Thread_local int  n_ntry = 0;
 
@@ -116,6 +116,8 @@ int main(int argc, char **argv) {
     curl_global_init(CURL_GLOBAL_DEFAULT);
 #endif
     vx_ctx = &main_ctx;
+    main_ctx.perms = (uint8_t)((allow_net ? PERM_NET : 0) |
+                               (allow_fs  ? PERM_FS  : 0));
     vx_register_ctx(&main_ctx);
     vx_task_runner = native_task_runner;
     VX_LOCK();
@@ -386,6 +388,11 @@ def _gen_proto(c, ix, p):
         elif nm == "RET":
             e("    { while (n_ntry > 0 && ntry[n_ntry - 1].frame == nframes - 1)")
             e("          n_ntry--;")
+            e("      while (vx_ctx->x_nsbox > 0 &&")
+            e("             vx_ctx->x_sbox[vx_ctx->x_nsbox - 1].frame "
+              "== nframes - 1)")
+            e("          vx_ctx->perms = "
+              "vx_ctx->x_sbox[--vx_ctx->x_nsbox].saved;")
             e("      Value r = pop();")
             e("      sp = frames[nframes - 1].base;")
             e("      nframes--;")
@@ -422,8 +429,12 @@ def _gen_proto(c, ix, p):
             e("      volatile int my = n_ntry;")
             e("      NTry *h = &ntry[n_ntry++];")
             e("      h->frame = nframes - 1; h->saved_sp = sp;")
+            e("      h->saved_nsbox = vx_ctx->x_nsbox;")
             e("      if (setjmp(h->buf)) {")
             e("          n_ntry = my;")
+            e("          while (vx_ctx->x_nsbox > ntry[my].saved_nsbox)")
+            e("              vx_ctx->perms = "
+              "vx_ctx->x_sbox[--vx_ctx->x_nsbox].saved;")
             e("          nframes = ntry[my].frame + 1;")
             e("          sp = ntry[my].saved_sp;")
             e("          push(vstr_o(new_str(errmsg, (uint32_t)strlen(errmsg))));")
@@ -431,6 +442,15 @@ def _gen_proto(c, ix, p):
             e("      } }")
         elif nm == "GO":
             e("    task_spawn(%d);" % arg)
+        elif nm == "SBOX_ENTER":
+            e('    { if (vx_ctx->x_nsbox >= SBOX_MAX) '
+              'vm_error("too many nested sandboxes");')
+            e("      vx_ctx->x_sbox[vx_ctx->x_nsbox].saved = vx_ctx->perms;")
+            e("      vx_ctx->x_sbox[vx_ctx->x_nsbox].frame = nframes - 1;")
+            e("      vx_ctx->x_nsbox++;")
+            e("      vx_ctx->perms &= (uint8_t)~%d; }" % arg)
+        elif nm == "SBOX_EXIT":
+            e("    vx_ctx->perms = vx_ctx->x_sbox[--vx_ctx->x_nsbox].saved;")
         elif nm == "AGENT":
             e("    { Value system = pop(), model = pop(), name = pop();")
             e("      Value v; v.t = V_AGENT;")

@@ -19,6 +19,16 @@ pemula, paket komunitas). Ide teknis tersisa ada di bawah.
 
 ### v1.3
 
+- Sandbox dalam-bahasa (`sandbox deny net, fs:`) — model capability: sekat
+  per wilayah kerja (mis. per agen) yang HANYA bisa mengurangi izin, tak
+  pernah menambah. Berlaku dinamis (fungsi yang dipanggil ikut tersekat),
+  diwariskan ke task saat `go`, dan pulih benar di setiap jalur keluar
+  (akhir blok / error tertangkap / return / break) — di KEEMPAT engine
+  (Python: thread-local + try/finally; C: `VmCtx.perms` + save-stack
+  `OP_SBOX_ENTER/EXIT`, unwind via Handler & RET). 6 test paritas baru;
+  SECURITY.md ditulis ulang jadi kebijakan sungguhan. Contoh:
+  `contoh/sekat.vx`.
+
 - ~~Keyword `agent` (Concurrency Fase E)~~ -> `agent nama:` blok persona AI
   STATEFUL (model/system terkunci saat deklarasi, riwayat percakapan per
   agen; dipanggil seperti fungsi; kompatibel go/wait) — identik di KEEMPAT

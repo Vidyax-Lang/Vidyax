@@ -96,6 +96,7 @@ void task_spawn(int argc) {
     t->ctx = calloc(1, sizeof(VmCtx));
     if (!t->ctx) vm_error("out of memory");
     t->ctx->is_task = 1;
+    t->ctx->perms = vx_ctx->perms;   /* capabilities travel with the task */
 
     /* move callee+args into the child ctx's stack */
     memcpy(t->ctx->x_stack, &stack[sp - argc - 1],

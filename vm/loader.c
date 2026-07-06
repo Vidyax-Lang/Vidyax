@@ -104,7 +104,7 @@ static int opsize(uint8_t op) {   /* operand bytes; -1 = unknown opcode */
     case OP_CONST: case OP_LOAD: case OP_STORE:
     case OP_LIST: case OP_MAKE_FUNC: case OP_GET_MEMBER:
     case OP_LOAD_SLOT: case OP_STORE_SLOT: return 2;
-    case OP_CALL: case OP_GO: return 1;
+    case OP_CALL: case OP_GO: case OP_SBOX_ENTER: return 1;
     case OP_JMP: case OP_JMP_IF_FALSE: case OP_JIF_PEEK:
     case OP_JIT_PEEK: case OP_TRY_PUSH: return 4;
     case OP_NULL: case OP_TRUE: case OP_FALSE: case OP_POP:
@@ -113,7 +113,7 @@ static int opsize(uint8_t op) {   /* operand bytes; -1 = unknown opcode */
     case OP_GT: case OP_GE: case OP_NOT: case OP_INDEX: case OP_RET:
     case OP_PRINT: case OP_ASK: case OP_CHECK_RPT: case OP_CHECK_ITER:
     case OP_LEN: case OP_TRY_POP: case OP_HALT: case OP_AI_NEW:
-    case OP_AGENT: return 0;
+    case OP_AGENT: case OP_SBOX_EXIT: return 0;
     default: return -1;
     }
 }

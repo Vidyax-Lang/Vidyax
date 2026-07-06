@@ -1,0 +1,29 @@
+# Sekat per agen: agen yang ngaco tidak bisa mengganggu yang lain.
+# Jalankan (butuh GROQ_API_KEY): vidyax contoh/sekat.vx
+
+agent penulis:
+    system "Kamu penulis. Jawab bahasa Indonesia satu kalimat."
+
+agent pengarsip:
+    system "Kamu pengarsip. Balas HANYA dengan nama file, contoh: catatan.txt"
+
+# Sekat 1: wilayah penulis — boleh jaringan (untuk AI), TANPA akses file.
+# Kalau balasan penulis terinjeksi/berhalusinasi dan kode di sini
+# tergoda menulis file, sekat menahannya.
+sandbox deny fs:
+    karya: penulis("Tulis satu kalimat tentang laut")
+    print "penulis : " + karya
+    try:
+        writefile("/tmp/bocor.txt", karya)   # percobaan bocor -> DITAHAN
+    catch e:
+        print "sekat   : " + e
+
+# Sekat 2: wilayah pengarsip — tanpa jaringan DAN tanpa file.
+# Pemrosesan teks murni: tidak ada otoritas sama sekali.
+sandbox deny net, fs:
+    aman: trim(lower("LAPORAN.TXT"))
+    print "arsip   : " + aman
+
+# Di luar sekat: program utama yang memegang izin penuh yang menulis.
+writefile("/tmp/arsip_vidyax.txt", "tersimpan oleh scope utama")
+print "utama   : " + readfile("/tmp/arsip_vidyax.txt")

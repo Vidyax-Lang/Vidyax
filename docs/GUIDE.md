@@ -279,6 +279,22 @@ other (see `contoh/agen.vx`). Agents work with `go`/`wait` too — but
 remember: one agent is one conversation, so run *different* agents in
 parallel, not the same one.
 
+### Sandboxing an agent's work zone
+
+Agent replies are just text — but if *your code* acts on a bad reply
+(hallucination, prompt injection), damage happens where the code has
+authority. Wrap each agent's work zone in a `sandbox` so it can't:
+
+```vidyax
+sandbox deny fs:              # this zone can use AI, but never files
+    karya: penulis("...")
+    ...process karya...
+writefile("hasil.txt", hasil) # only the main scope writes
+```
+
+Denied things raise a normal catchable error; permissions come back the
+moment the block ends. See `contoh/sekat.vx` for a full example.
+
 ---
 
 ## 11. Working with lists and text

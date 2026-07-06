@@ -19,8 +19,9 @@ from tests import CASES, ERROR_CASES, GO_CASES
 VM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vm", "vxvm")
 # extra flags, e.g.: VXVM_FLAGS="--gc-stress" python3 tests_vm.py
 VM_FLAGS = os.environ.get("VXVM_FLAGS", "").split()
-# the shared file-op cases from tests.py need file access in the VM
-VM_FLAGS += ["--allow-fs"]
+# the shared file-op cases need fs; the sandbox net-deny cases need the
+# net baseline granted so the sandbox (not the flag) is what denies it
+VM_FLAGS += ["--allow-fs", "--allow-net"]
 
 # The VM runs `use ai` and member access. Only skip cases that would hit
 # the network (ai.ask / a reachable get()), which needs credentials.

@@ -57,6 +57,8 @@ static void bytecode_task_runner(OTask *t) {
 static void run(void) {
     vx_task_runner = bytecode_task_runner;
     vx_ctx = &main_ctx;
+    main_ctx.perms = (uint8_t)((allow_net ? PERM_NET : 0) |
+                               (allow_fs  ? PERM_FS  : 0));
     vx_register_ctx(&main_ctx);
     Env *global = new_env(NULL, NULL);
     /* register only the builtins the program can actually name */
@@ -90,6 +92,8 @@ void vx_run_loop(void) {
         /* runtime error: unwind to the innermost try handler, or die */
         if (nhandlers > 0) {
             Handler h = handlers[--nhandlers];
+            while (vx_ctx->x_nsbox > h.saved_nsbox)   /* leave sandboxes */
+                vx_ctx->perms = vx_ctx->x_sbox[--vx_ctx->x_nsbox].saved;
             nframes = h.frame + 1;
             sp = h.saved_sp;
             frames[nframes - 1].ip = h.catch_ip;
@@ -301,6 +305,9 @@ void vx_run_loop(void) {
             /* drop try handlers opened in this frame (return inside try) */
             while (nhandlers > 0 && handlers[nhandlers - 1].frame == nframes - 1)
                 nhandlers--;
+            while (vx_ctx->x_nsbox > 0 &&
+                   vx_ctx->x_sbox[vx_ctx->x_nsbox - 1].frame == nframes - 1)
+                vx_ctx->perms = vx_ctx->x_sbox[--vx_ctx->x_nsbox].saved;
             Value r = pop();
             sp = frames[nframes - 1].base;
             nframes--;
@@ -309,6 +316,19 @@ void vx_run_loop(void) {
                 return;   /* a task's entry call returned: result on top */
             break;
         }
+        case OP_SBOX_ENTER: {
+            uint8_t mask = code[fr->ip++];
+            if (vx_ctx->x_nsbox >= SBOX_MAX)
+                vm_error("too many nested sandboxes");
+            vx_ctx->x_sbox[vx_ctx->x_nsbox].saved = vx_ctx->perms;
+            vx_ctx->x_sbox[vx_ctx->x_nsbox].frame = nframes - 1;
+            vx_ctx->x_nsbox++;
+            vx_ctx->perms &= (uint8_t)~mask;
+            break;
+        }
+        case OP_SBOX_EXIT:
+            vx_ctx->perms = vx_ctx->x_sbox[--vx_ctx->x_nsbox].saved;
+            break;
         case OP_AGENT: {
             Value system = pop(), model = pop(), name = pop();
             push((Value){ .t = V_AGENT,
@@ -364,6 +384,7 @@ void vx_run_loop(void) {
             if (nhandlers >= HANDLERS_MAX) vm_error("too many nested try");
             handlers[nhandlers].frame = nframes - 1;
             handlers[nhandlers].saved_sp = sp;
+            handlers[nhandlers].saved_nsbox = vx_ctx->x_nsbox;
             handlers[nhandlers].catch_ip = t;
             nhandlers++;
             break;

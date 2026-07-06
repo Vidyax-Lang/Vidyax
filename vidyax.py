@@ -37,7 +37,7 @@ KEYWORDS = {
     "ask", "use", "and", "or", "not",
     "true", "false", "null",
     "break", "continue",
-    "try", "catch",
+    "try", "catch", "sandbox",
     # roadmap (recognized but not yet runnable):
     "agent", "go",
 }
@@ -272,6 +272,12 @@ class Index(Node):
 class GoTask(Node):
     """`go f(args)` — run the call as a concurrent task (docs/CONCURRENCY.md)."""
     def __init__(self, call, line): self.call = call; self.line = line
+class Sandbox(Node):
+    """`sandbox deny net, fs:` — run the block with capabilities removed.
+    A sandbox can only REDUCE permissions, never add them; tasks spawned
+    inside inherit the reduced set for their whole life."""
+    def __init__(self, denies, body, line):
+        self.denies = denies; self.body = body; self.line = line
 class AgentDef(Node):
     """`agent name:` block — a stateful AI persona callable like a function."""
     def __init__(self, name, model, system, line):
@@ -380,6 +386,7 @@ class Parser:
                     raise VidyaxError("'continue' only works inside a loop", t.line)
                 self.eat(); self.eat("NEWLINE"); return Continue()
             if t.value == "agent":   return self.stmt_agent()
+            if t.value == "sandbox":  return self.stmt_sandbox()
         # assignment: NAME ':' expr
         if t.kind == "NAME" and self.peek(1).kind == "OP" and self.peek(1).value == ":":
             name = self.guard_name(self.eat("NAME"))
@@ -451,6 +458,30 @@ class Parser:
         self.func_depth -= 1
         self.loop_depth = saved_loop
         return FuncDef(name, params, body)
+
+    def stmt_sandbox(self):
+        # sandbox deny net, fs:  <block>
+        t = self.eat("KEYWORD", "sandbox")
+        w = self.peek()
+        if w.kind != "NAME" or w.value != "deny":
+            raise VidyaxError(
+                "expected 'deny' after 'sandbox', like: sandbox deny net:",
+                t.line)
+        self.eat("NAME")
+        denies = []
+        while True:
+            perm = self.peek()
+            if perm.kind != "NAME" or perm.value not in ("net", "fs"):
+                raise VidyaxError(
+                    "sandbox can deny 'net' and/or 'fs'", perm.line)
+            self.eat("NAME")
+            denies.append(perm.value)
+            if self.at("OP", ","):
+                self.eat("OP", ",")
+                continue
+            break
+        body = self.block()
+        return Sandbox(denies, body, t.line)
 
     def stmt_agent(self):
         # agent NAME:
@@ -728,6 +759,8 @@ def assigned_names(body):
             names.add(s.name)  # the func name binds locally; body = new scope
         elif t == "AgentDef":
             names.add(s.name)  # `agent x:` binds the name x (a callable)
+        elif t == "Sandbox":
+            stack.extend(s.body)
         elif t == "Import":
             names.add(s.name)  # `use ai` binds the name 'ai'
     return names
@@ -822,6 +855,13 @@ class Interpreter:
             raise VidyaxError(f"module '{n.name}' is not supported yet (roadmap)")
         else:
             raise VidyaxError(f"unknown module '{n.name}'")
+
+    def exec_Sandbox(self, n, env):
+        old = RT["_sandbox_enter"](n.denies)
+        try:
+            self.exec_block(n.body, env)
+        finally:
+            RT["_sandbox_exit"](old)
 
     def exec_AgentDef(self, n, env):
         model = self.eval(n.model, env) if n.model is not None else None
@@ -1209,6 +1249,7 @@ class _AI:
     def _ask_messages(self, messages):
         # POST a full message list and return the reply text. Shared by
         # ai.ask (stateless) and _Agent (stateful, sends its history).
+        _perm_net()
         url, keyname = _AI_PROVIDERS[self.provider]
         key = _os.environ.get(keyname)
         if not key:
@@ -1366,6 +1407,7 @@ def _b_get(url):
     # handle it with try/catch, like every other error in the language.
     if not isinstance(url, str):
         raise _VidyaxRuntime("get() needs a text URL")
+    _perm_net()
     try:
         req = _ureq.Request(url, headers={"User-Agent": "vidyax/1.1"})
         with _ureq.urlopen(req, timeout=15) as r:
@@ -1380,6 +1422,7 @@ def _b_get(url):
 def _b_readfile(path):
     if not isinstance(path, str):
         raise _VidyaxRuntime("readfile() needs a text path")
+    _perm_fs()
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             return f.read()
@@ -1389,6 +1432,7 @@ def _b_readfile(path):
 def _b_writefile(path, txt):
     if not isinstance(path, str):
         raise _VidyaxRuntime("writefile() needs a text path and a value")
+    _perm_fs()
     try:
         with open(path, "w", encoding="utf-8") as f:
             f.write(_vstr(txt))
@@ -1519,6 +1563,40 @@ def _b_find(x, item):
         return x.find(_vstr(item))
     raise _VidyaxRuntime("find() needs a list or text")
 
+# --- sandbox permissions (per-thread; capability model) --------------
+# The Python engines start with everything allowed (like today); the C
+# engines start from the --allow-* flags. A `sandbox deny ...:` block can
+# only REDUCE the set; tasks inherit the spawner's set at `go` time.
+_PERMS = _thr.local()
+
+def _cur_perms():
+    p = getattr(_PERMS, "v", None)
+    if p is None:
+        p = {"net": True, "fs": True}
+        _PERMS.v = p
+    return p
+
+def _sandbox_enter(denies):
+    old = dict(_cur_perms())
+    new = dict(old)
+    for d in denies:
+        new[d] = False
+    _PERMS.v = new
+    return old
+
+def _sandbox_exit(old):
+    _PERMS.v = old
+
+def _perm_net():
+    if not _cur_perms()["net"]:
+        raise _VidyaxRuntime("network access is not allowed here "
+                             "(blocked by 'sandbox deny net')")
+
+def _perm_fs():
+    if not _cur_perms()["fs"]:
+        raise _VidyaxRuntime("file access is not allowed here "
+                             "(blocked by 'sandbox deny fs')")
+
 # --- tasks (`go` / wait) — docs/CONCURRENCY.md; Python's GIL IS the
 # execution model: one interpreter lock, released inside blocking I/O ---
 _ALL_TASKS = []
@@ -1529,11 +1607,13 @@ class _VTask:
         self.result = None
         self.err = None
         self.waited = False
+        self._perms = dict(_cur_perms())   # capabilities travel with it
         _ALL_TASKS.append(self)
         self._t = _thr.Thread(target=self._run, args=(thunk,))
         self._t.start()
 
     def _run(self, thunk):
+        _PERMS.v = self._perms
         try:
             self.result = thunk()
         except _VidyaxRuntime as e:
@@ -1746,6 +1826,15 @@ class Transpiler:
                 raise VidyaxError(f"module '{n.name}' is not supported yet (roadmap)")
             else:
                 raise VidyaxError(f"unknown module '{n.name}'")
+        elif t == "Sandbox":
+            self._sbox = getattr(self, "_sbox", 0) + 1
+            saved = "_sb%d" % self._sbox
+            self.emit(indent, "%s = _sandbox_enter(%r)"
+                      % (saved, tuple(n.denies)))
+            self.emit(indent, "try:")
+            self.block(n.body, indent + 1)
+            self.emit(indent, "finally:")
+            self.emit(indent + 1, "_sandbox_exit(%s)" % saved)
         elif t == "AgentDef":
             model = self.expr(n.model) if n.model is not None else "None"
             system = self.expr(n.system) if n.system is not None else "None"
