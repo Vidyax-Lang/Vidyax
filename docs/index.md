@@ -25,14 +25,21 @@ vidyax run hello.vx
 
 ## What makes Vidyax different
 
-- **Three engines, one behavior.** The tree-walker (Python), the
-  transpiler (Python), and the Virtual Machine (C) run the same program
-  with **identical** results — guaranteed by differential testing.
+- **Four engines, one behavior.** A tree-walker, a Python transpiler, a
+  C bytecode VM, and a native compiler run the same program with
+  **identical** results — guaranteed by differential testing and a
+  fuzzer.
 - **Its own Virtual Machine.** Written in C, with a mark-sweep garbage
-  collector, bytecode verification, and sandbox limits (instructions,
-  memory, time).
+  collector, an optimizing compiler, bytecode verification, and sandbox
+  limits (instructions, memory, time).
+- **Native binaries.** `vidyax native` compiles a program to a
+  standalone executable — no runtime needed to run it.
+- **Concurrency.** `go` / `wait` overlaps slow work (network, AI) with a
+  model that makes data races impossible.
+- **Modules & packages.** `use name` splits code across files;
+  `vidyax install` fetches shared modules.
 - **Friendly error messages.** Every error is explained in plain
-  language, worded identically across all three engines.
+  language, worded identically across every engine.
 - **Built-in AI.** An `ai` module lets you query language models directly
   from your program.
 
@@ -48,6 +55,9 @@ vidyax run hello.vx
 
 - :material-chip: **[VVM Specification](VVM_SPEC.md)** — the Virtual
   Machine architecture, bytecode format, and garbage collector.
+
+- :material-arrow-decision: **[Concurrency](CONCURRENCY.md)** — the design
+  of `go` / `wait` and how tasks work across all four engines.
 
 </div>
 

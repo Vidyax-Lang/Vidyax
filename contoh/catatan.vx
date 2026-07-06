@@ -1,0 +1,19 @@
+# Buku Catatan — menyimpan & membaca daftar dari sebuah file.
+# Jalankan: vidyax contoh/catatan.vx
+# Di VM/native butuh izin file: vxvm --allow-fs catatan.vxc
+
+berkas: "/tmp/catatan_vidyax.txt"
+
+# tulis daftar catatan (satu per baris)
+catatan: ["beli susu", "kerjakan PR", "telepon nenek"]
+writefile(berkas, join(catatan, "\n"))
+print "Tersimpan " + len(catatan) + " catatan ke " + berkas
+
+# baca kembali dan tampilkan bernomor
+isi: readfile(berkas)
+baris: split(isi, "\n")
+print "Daftar catatan:"
+nomor: 1
+for b in baris:
+    print nomor + ". " + b
+    nomor: nomor + 1

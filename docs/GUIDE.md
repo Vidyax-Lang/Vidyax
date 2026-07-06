@@ -263,13 +263,128 @@ export OPENAI_API_KEY=sk_xxxxx
 
 ---
 
+## 11. Working with lists and text
+
+Lists hold a series of values. Vidyax gives you a full set of tools to
+build and reshape them:
+
+```vidyax
+nums: [3, 1, 2]
+push(nums, 4)          # [3, 1, 2, 4] — add to the end
+sort(nums)             # [1, 2, 3, 4] — sort in place
+print reverse(nums)    # [4, 3, 2, 1]
+print pop(nums)        # 4  (removes and returns the last item)
+print find(nums, 2)    # 1  (index of the value, or -1 if absent)
+print slice(nums, 0, 2)# [1, 2]  (a copy of items 0..1)
+print contains(nums, 3)# true
+```
+
+Text has matching tools:
+
+```vidyax
+print upper("halo")               # HALO
+print replace("a-b-c", "-", " ")  # a b c
+print split("a,b,c", ",")         # [a, b, c]
+print join(["x", "y"], "-")       # x-y
+print trim("  spasi  ")           # spasi
+print startswith("vidyax", "vid") # true
+```
+
+And numbers:
+
+```vidyax
+print round(3.14159, 2)   # 3.14
+print sqrt(16)            # 4
+print floor(3.7)         # 3
+print random(1, 6)       # a dice roll
+```
+
+See [REFERENCE.md](./REFERENCE.md) for the complete list.
+
+---
+
+## 12. Splitting code into files (`use`)
+
+When a program grows, move reusable code into its own `.vx` file and
+pull it in with `use`. Say you have `mathx.vx`:
+
+```vidyax
+# mathx.vx
+func kuadrat(n):
+    return n * n
+```
+
+Then any program in the same folder (or in a `vx_modules/` subfolder)
+can use it:
+
+```vidyax
+use mathx
+print kuadrat(9)   # 81
+```
+
+A module is loaded once even if several files `use` it, and Vidyax
+catches circular `use`. To grab a module someone published on GitHub:
+
+```bash
+vidyax install user/repo        # downloads it into vx_modules/
+```
+
+---
+
+## 13. Doing things at the same time (`go` / `wait`)
+
+Normally each line waits for the one before it. But when you're waiting
+on something slow — the network, an AI model — you can run several at
+once with `go`:
+
+```vidyax
+use ai
+
+t1: go ai.ask "Explain gravity in one sentence"
+t2: go ai.ask "Explain photosynthesis in one sentence"
+
+print wait(t1)   # both questions were sent at the SAME time,
+print wait(t2)   # so this finishes in ~1 answer's worth of time
+```
+
+`go f(x)` starts a **task** and returns immediately; `wait(t)` gives you
+its result (and re-raises its error, catchable with try/catch). Pure
+calculation never overlaps, so you never get tangled results — tasks
+only interleave while waiting on input/output. A program without `go`
+behaves exactly as before.
+
+---
+
+## 14. Going faster: bytecode and native
+
+`vidyax run` is plenty fast for most things. When you need more speed,
+Vidyax can compile your program down two more steps:
+
+```bash
+vidyax bytecode program.vx      # -> program.vxc, run with ./vm/vxvm
+vidyax native   program.vx      # -> a standalone binary, no Python needed
+```
+
+The native binary is the fastest option and needs no runtime installed —
+handy for sharing a finished tool. All of these run your program with
+identical results; that sameness is enforced by the test suite.
+
+Other handy commands while developing:
+
+```bash
+vidyax debug   program.vx       # step through line by line
+vidyax profile program.vx       # see which lines are hot
+```
+
+---
+
 ## Next
 
 - [REFERENCE.md](./REFERENCE.md) — the complete list of all syntax,
   built-in functions, CLI commands, and error messages.
 - The `contoh/` folder in the repo — example programs you can run
-  directly.
+  directly (a guessing game, a word counter, a note keeper, and more).
 
-If you write the same program, `vidyax run` and `vidyax walk` must
-produce identical results — this is guaranteed by the built-in tests
-(`vidyax test`).
+If you write the same program, every engine — `vidyax run`, `vidyax
+walk`, the bytecode VM, and a native binary — produces identical
+results. This is guaranteed by the built-in tests (`vidyax test`).

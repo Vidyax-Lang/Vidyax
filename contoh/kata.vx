@@ -1,0 +1,22 @@
+# Statistik Kata — memproses teks dengan builtin list & string.
+# Jalankan: vidyax contoh/kata.vx
+
+teks: "the quick brown fox the lazy dog the fox"
+kata: split(teks, " ")
+
+print "Jumlah kata: " + len(kata)
+
+# kumpulkan kata unik
+unik: []
+for k in kata:
+    if not contains(unik, k):
+        push(unik, k)
+sort(unik)
+print "Kata unik (" + len(unik) + "): " + join(unik, ", ")
+
+# hitung berapa kali "the" muncul
+n: 0
+for k in kata:
+    if k == "the":
+        n: n + 1
+print "'the' muncul " + n + " kali"

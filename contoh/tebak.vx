@@ -1,0 +1,19 @@
+# Tebak Angka — game interaktif.
+# Jalankan: vidyax contoh/tebak.vx
+
+target: random(1, 100)
+print "Aku memikirkan angka 1 sampai 100. Kamu punya 7 tebakan."
+
+sisa: 7
+rpt 7:
+    tebakan: num(ask "Tebakanmu:")
+    if tebakan == target:
+        print "Benar! Hebat! 🎉"
+        break
+    sisa: sisa - 1
+    if sisa == 0:
+        print "Kesempatan habis. Angkanya " + target
+    elif tebakan < target:
+        print "Terlalu kecil. Sisa " + sisa + " tebakan."
+    else:
+        print "Terlalu besar. Sisa " + sisa + " tebakan."

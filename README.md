@@ -31,14 +31,16 @@ Above all, Vidyax is an **educational** language: readable enough for a beginner
 
 ## Key Features
 
-- 🚀 **Custom C Virtual Machine (VVM)** — a stack-based bytecode interpreter written entirely in C, delivering performance that outpaces the original Python transpiler by a wide margin.
-- 🧹 **Mark-Sweep Garbage Collector** — automatic memory management built from scratch, with safepoint-based collection and precise byte-level accounting. No manual memory handling required.
-- ⚡ **Slot-Based Local Variables** — a compile-time escape analysis pass places non-captured locals into fast stack slots, eliminating per-call heap allocation on hot paths.
-- 🛡️ **Bytecode Verifier** — every compiled program is validated before it runs: opcodes, operand ranges, and jump targets are all checked, so malformed bytecode is rejected rather than executed.
-- 🔒 **Strict Sandboxing** — optional instruction, memory, and time limits let you run untrusted code safely and predictably.
-- 🔁 **Three Verified Engines** — a tree-walker, a Python transpiler, and the C VM all run the same programs through a shared differential test suite, guaranteeing identical behavior across every execution path.
+- 🔁 **Four Verified Engines** — a tree-walker, a Python transpiler, a C bytecode VM, and an **ahead-of-time native compiler** all run the same programs through a shared differential test suite (plus a differential fuzzer), guaranteeing identical behavior across every execution path.
+- 🚀 **Custom C Virtual Machine (VVM)** — a stack-based bytecode interpreter written entirely in C, outpacing the Python transpiler by a wide margin.
+- 🏎️ **Native Backend** — `vidyax native` compiles a program to a standalone C binary (no runtime needed) that runs ~2.6× faster than the VM and ~36× faster than the transpiler.
+- ⚙️ **Optimizing Compiler** — constant folding, dead-code elimination, peephole, function inlining, escape analysis, and a basic-block CFG layer, all behavior-preserving.
+- 🧹 **Mark-Sweep Garbage Collector** — safepoint-based collection with precise byte-level accounting. No manual memory handling.
+- 🧵 **Concurrency** — `go f(x)` / `wait(t)` runs slow I/O (network, AI) in parallel on all four engines, with a GIL-style model that makes data races impossible.
+- 📦 **Modules & Packages** — `use name` splits code across files; `vidyax install user/repo` fetches shared modules.
+- 🛡️ **Sandbox & Verifier** — every compiled program is validated (opcodes, operands, jump targets) before it runs, with optional instruction/memory/time limits for untrusted code.
 - 🤖 **Built-in AI Module** — query language models directly from your code with a clean, minimal API.
-- 🧰 **Official Editor Tooling** — a Visual Studio Code extension provides syntax highlighting and language support out of the box.
+- 🧰 **Full Toolchain** — an interactive REPL, a line debugger (`vidyax debug`), a profiler (`vidyax profile`), a disassembler (`vidyax disasm`), a Language Server (`vidyax lsp`), and a published VS Code extension.
 
 ## Architecture Overview
 
@@ -63,11 +65,9 @@ Vidyax follows a classic, staged compilation pipeline. Source code is transforme
                                                        Result
 ```
 
-The Python-based front end (lexer, parser, and semantic analysis) is shared across all three engines, ensuring the language behaves identically whether interpreted directly or compiled to bytecode. The C virtual machine handles the final stage: verifying the bytecode, then executing it with garbage collection and sandbox enforcement active.
+The Python-based front end (lexer, parser, and semantic analysis) is shared across every engine, ensuring the language behaves identically whether interpreted directly, compiled to bytecode, or compiled to a native binary. The C virtual machine handles verification, garbage collection, and sandbox enforcement; the native backend reuses the same runtime modules, so values, GC, and built-ins are identical by construction.
 
 ## Syntax & Usage Examples
-
-> Replace the snippets below with your exact Vidyax syntax.
 
 **Hello World**
 
@@ -112,7 +112,21 @@ func factorial(n):
 print "5! = " + factorial(5)
 ```
 
-For the complete language reference, see the [official documentation](https://vidyax-lang.github.io/Vidyax/).
+**AI, in parallel**
+
+```vidyax
+use ai
+
+# both questions are sent at the same time
+a: go ai.ask "Explain gravity in one sentence"
+b: go ai.ask "Explain photosynthesis in one sentence"
+print wait(a)
+print wait(b)
+```
+
+More runnable programs — a guessing game, a word counter, a note keeper,
+a chatbot — live in the [`contoh/`](./contoh) folder. For the complete
+language reference, see the [official documentation](https://vidyax-lang.github.io/Vidyax/).
 
 ## Installation & Setup
 
@@ -154,13 +168,22 @@ python3 vidyax.py bytecode program.vx
 ./vm/vxvm program.vxc
 ```
 
-**4. Verify your build (optional)**
-
-Run the full test suite to confirm all three engines agree:
+To compile a program to a **standalone native binary** (no Python needed
+to run it):
 
 ```bash
-python3 vidyax.py test      # tree-walker + transpiler
+python3 vidyax.py native program.vx -o program
+./program
+```
+
+**4. Verify your build (optional)**
+
+Run the full test suite to confirm every engine agrees:
+
+```bash
+python3 vidyax.py test      # tree-walker + transpiler (+ VM/native smoke tests)
 python3 tests_vm.py         # C virtual machine
+python3 fuzz.py             # differential fuzzer across engines
 ```
 
 ## VS Code Tooling
