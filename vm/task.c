@@ -16,6 +16,11 @@
 
 int vx_tasks_live = 0;
 
+/* engine-specific: how a V_FUNC task actually executes. The VM installs
+ * a bytecode runner (vm.c); a native binary installs one that calls the
+ * compiled NFN[] function. Everything else here is engine-agnostic. */
+void (*vx_task_runner)(OTask *t) = NULL;
+
 #define MAX_TASKS 256
 static OTask *live[MAX_TASKS];
 static int    nlive = 0;
@@ -28,9 +33,7 @@ static void *task_worker(void *arg) {
     VX_LOCK();
     vx_ctx = t->ctx;
     if (t->ctx->x_nframes > 0) {
-        vx_run_loop();               /* function task: run until RET */
-        if (!t->ctx->failed)
-            t->result = t->ctx->x_stack[t->ctx->x_sp - 1];
+        vx_task_runner(t);           /* function task (engine-specific) */
     } else {
         /* builtin/bound task: one direct call under the lock (the
          * builtin itself releases it around its blocking syscall) */

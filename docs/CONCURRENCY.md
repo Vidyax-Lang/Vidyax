@@ -1,8 +1,8 @@
 # Vidyax Concurrency — Design Document (v1 draft)
 
-Status: **Phases A-C shipped** (walker, fast, and the VVM all run
-`go`/`wait`); Phase D (native) remains. The keywords `go` and `agent`
-have been reserved since v1.0.
+Status: **Phases A-D shipped — `go`/`wait` runs on all FOUR engines**
+(walker, fast, VVM, native). The keywords `go` and `agent` have been
+reserved since v1.0.
 
 ## 1. Goals and hard constraints
 
@@ -93,7 +93,9 @@ the reason this document exists before any code.
   inside blocking builtins; GC roots iterate every live context; byte
   accounting is atomic; `OP_GO` + `vm/task.c`. Verified with the full
   suite under --gc-stress, ASan, AND ThreadSanitizer.
-- **D:** native backend support (OP_GO is cleanly rejected there today).
+- **D (done):** native backend — task.c became engine-agnostic via a
+  `vx_task_runner` hook (VM: bytecode loop; native: the compiled NFN[]
+  call); `ntry` went thread-local. Verified under ThreadSanitizer.
 - **E:** `agent` keyword — sugar over tasks for AI workflows (design
   later, on top of a proven task layer).
 
@@ -105,4 +107,4 @@ the reason this document exists before any code.
 3. **No timeout in v1** — `wait(t, max_secs)` and task cancellation are
    v2 questions.
 
-Status: design APPROVED; Phases A-C shipped. Next: Phase D (native).
+Status: design APPROVED; Phases A-D shipped. Next: Phase E (`agent`).

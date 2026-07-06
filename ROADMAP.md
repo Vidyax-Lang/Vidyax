@@ -6,8 +6,9 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 
 ## Prioritas berikutnya
 
-1. **Concurrency Fase D** — `go`/`wait` sudah hidup di walker + fast + VVM
-   (Fase A-C). Tersisa: native backend. Desain: `docs/CONCURRENCY.md`.
+1. **Concurrency Fase E (opsional)** — keyword `agent`: gula sintaks di atas
+   task untuk alur kerja AI. `go`/`wait` sendiri SUDAH tuntas di KEEMPAT
+   engine (Fase A-D). Desain: `docs/CONCURRENCY.md`.
 
 ## Ide lain (belum diprioritaskan)
 
@@ -20,6 +21,10 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 
 ### v1.3
 
+- Concurrency Fase D: native backend ikut menjalankan `go`/`wait` —
+  `task.c` jadi engine-agnostik via hook `vx_task_runner` (VM: loop
+  bytecode; native: panggilan `NFN[]` terkompilasi), `ntry` thread-local.
+  TSan bersih; go/wait kini identik di KEEMPAT engine.
 - Concurrency Fase C: VVM ikut menjalankan `go`/`wait` — refactor `VmCtx`
   (state eksekusi per-task, alias makro via thread-local `vx_ctx` ala Lua),
   GIL `vx_gil` dilepas hanya di builtin I/O, GC me-root semua ctx, akuntansi

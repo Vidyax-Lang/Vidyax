@@ -55,13 +55,8 @@ _Thread_local VmCtx *vx_ctx = NULL;
 VmCtx *vx_all_ctxs = NULL;
 pthread_mutex_t vx_gil = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t  vx_task_done = PTHREAD_COND_INITIALIZER;
-int vx_tasks_live = 0;
 void vx_register_ctx(VmCtx *c) { c->next = vx_all_ctxs; vx_all_ctxs = c; }
-OTask **vx_live_tasks(int *n) { *n = 0; return NULL; }
-Value b_wait(int argc, Value *a) {
-    (void)argc; (void)a;   /* no OP_GO natively -> no task can exist */
-    vm_error("wait() needs a task (made with 'go')");
-}
+void vx_run_loop(void) {}   /* bytecode-only; never called natively */
 uint64_t max_instr = 0, instr_count = 0;
 size_t   max_mem = 0,  mem_used = 0;
 double   max_secs = 0; clock_t start_clock;
@@ -72,16 +67,28 @@ uint64_t gc_runs = 0;
 
 /* ---- native try/catch: one setjmp per `try`, owned by its frame ---- */
 typedef struct { jmp_buf buf; int frame, saved_sp; } NTry;
-static NTry ntry[HANDLERS_MAX];
-static int  n_ntry = 0;
+static _Thread_local NTry ntry[HANDLERS_MAX];   /* per task */
+static _Thread_local int  n_ntry = 0;
 
 VX_NORETURN void vm_error(const char *fmt, ...) {
     va_list ap; va_start(ap, fmt);
     vsnprintf(errmsg, sizeof errmsg, fmt, ap);
     va_end(ap);
     if (n_ntry > 0) longjmp(ntry[n_ntry - 1].buf, 1);
+    if (vx_ctx->is_task) {          /* task: record, abort to the worker */
+        vx_ctx->failed = 1;
+        longjmp(err_jmp, 1);        /* the runner/worker setjmp'd this */
+    }
     printf("[Vidyax] %s\n", errmsg);
     exit(1);
+}
+
+/* how a V_FUNC task runs natively: call its compiled function */
+static void (*NFN[])(void);
+static void native_task_runner(OTask *t) {
+    if (setjmp(err_jmp)) return;    /* uncaught error: failed already set */
+    NFN[frames[0].proto - protos]();
+    t->result = stack[sp - 1];
 }
 
 static void push(Value v) {
@@ -110,6 +117,7 @@ int main(int argc, char **argv) {
 #endif
     vx_ctx = &main_ctx;
     vx_register_ctx(&main_ctx);
+    vx_task_runner = native_task_runner;
     VX_LOCK();
     init_pool();
     Env *global = new_env(NULL, NULL);
@@ -129,6 +137,7 @@ int main(int argc, char **argv) {
         push(vunset());
     nframes = 1;
     np_0();
+    tasks_finish();   /* join every task; report unwaited failures */
     if (gc_stats)
         fprintf(stderr, "[vxnative] gc runs: %llu, peak mem: %zu bytes\n",
                 (unsigned long long)gc_runs, peak_mem);
@@ -414,8 +423,7 @@ def _gen_proto(c, ix, p):
             e("          goto L%d;" % arg)
             e("      } }")
         elif nm == "GO":
-            raise VidyaxError("'go' is not compiled to native yet — "
-                              "Phase D of docs/CONCURRENCY.md")
+            e("    task_spawn(%d);" % arg)
         elif nm == "TRY_POP":
             e("    n_ntry--;")
         elif nm == "HALT":
@@ -447,7 +455,7 @@ def native_file(path, out=None, keep_c=False):
     out = out or os.path.splitext(path)[0]
     vmdir = os.path.join(HERE, "vm")
     mods = [os.path.join(vmdir, m)
-            for m in ("value.c", "gc.c", "net.c", "builtins.c")]
+            for m in ("value.c", "gc.c", "net.c", "builtins.c", "task.c")]
     cc = os.environ.get("CC", "cc")
     curl = shutil.which("pkg-config") and subprocess.run(
         ["pkg-config", "--exists", "libcurl"]).returncode == 0

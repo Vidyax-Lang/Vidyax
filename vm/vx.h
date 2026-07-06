@@ -255,6 +255,7 @@ void  task_spawn(int argc);            /* OP_GO: callee+args on the stack */
 Value b_wait(int argc, Value *args);
 void  tasks_finish(void);              /* end of program: join everything */
 OTask **vx_live_tasks(int *n);         /* GC roots: running tasks */
+extern void (*vx_task_runner)(OTask *t);   /* set per engine */
 extern int vx_tasks_live;              /* running tasks (main excluded) */
 
 /* ---- debug.c (--debug) ---- */

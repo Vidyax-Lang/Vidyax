@@ -457,8 +457,13 @@ def run_all_tests():
         nat_src = ('func fib(n):\n    if n <= 1:\n        return n\n'
                    '    return fib(n - 1) + fib(n - 2)\n'
                    'try:\n    x: 1 / 0\ncatch e:\n    print "err: " + e\n'
-                   'print fib(15)\nprint sort([3, 1, 2])\n')
-        want_nat = "err: cannot divide by 0\n610\n[1, 2, 3]\n"
+                   'print fib(15)\nprint sort([3, 1, 2])\n'
+                   # go/wait natively too (Phase D)
+                   't: go fib(10)\nprint wait(t)\n'
+                   'func g():\n    return 1 / 0\ntg: go g()\n'
+                   'try:\n    print wait(tg)\ncatch e:\n    print "task: " + e\n')
+        want_nat = ("err: cannot divide by 0\n610\n[1, 2, 3]\n"
+                    "55\ntask: cannot divide by 0\n")
         with tempfile.TemporaryDirectory() as td:
             nvx = os.path.join(td, "n.vx")
             with open(nvx, "w") as f:

@@ -48,7 +48,14 @@ static void push(Value v) {
 }
 static Value pop(void) { return stack[--sp]; }
 
+static void bytecode_task_runner(OTask *t) {
+    vx_run_loop();               /* runs until the entry frame RETs */
+    if (!vx_ctx->failed)
+        t->result = stack[sp - 1];
+}
+
 static void run(void) {
+    vx_task_runner = bytecode_task_runner;
     vx_ctx = &main_ctx;
     vx_register_ctx(&main_ctx);
     Env *global = new_env(NULL, NULL);
