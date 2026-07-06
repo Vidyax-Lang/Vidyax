@@ -11,3 +11,4 @@ loop.vx
 vm/vxvm
 *.vxc
 .claude/
+fuzz_failures/

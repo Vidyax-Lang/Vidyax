@@ -105,6 +105,17 @@ CASES = [
     ('print slice([1, 2, 3, 4, 5], 1, 3)\n', "[2, 3]\n"),
     ('print slice("vidyax", 0, 3)\nprint slice("vidyax", -3, 99)\n', "vid\nyax\n"),
     ('print slice([1, 2, 3], 2, 1)\n', "[]\n"),
+    # -- pinned by the differential fuzzer (fuzz.py) --
+    # bools are numbers everywhere (true=1, false=0), like the VM's numlike
+    ('print floor(true) + ceil(false)\nprint abs(true)\nprint -true\n', "1\n1\n-1\n"),
+    # text builtins format values Vidyax-style (never Python's str())
+    ('print trim(false)\nprint upper(null)\nprint lower(3.0)\n', "false\nNULL\n3\n"),
+    # top-level read-before-assign is a NAME error on all three engines
+    # ("assigned in this function..." wording is for user functions only)
+    ('try:\n    x: q + 1\ncatch e:\n    print e\nq: 5\nprint q\n',
+     "variable 'q' is not defined\n5\n"),
+    # list concat with +, like the VM's do_add
+    ('print [1, 2] + [3]\n', "[1, 2, 3]\n"),
     # stdlib: files (the VM needs --allow-fs; tests_vm.py passes it)
     ('writefile("/tmp/vx_selftest.txt", "abc")\nprint readfile("/tmp/vx_selftest.txt")\n', "abc\n"),
     ('print writefile("/tmp/vx_selftest.txt", 123)\nprint readfile("/tmp/vx_selftest.txt")\n', "null\n123\n"),
@@ -141,6 +152,20 @@ ERROR_CASES = [
     ('sort([1, "a"])\n', "cannot compare number with text"),
     ('print find(5, 1)\n', "find() needs a list or text"),
     ('print slice(5, 0, 1)\n', "slice() needs a list or text"),
+    # -- pinned by the differential fuzzer (fuzz.py): raw Python error
+    #    text must never leak; all engines share the VM's wording --
+    ('x: [2, "a"]\nprint x[0] < x[1]\n', "cannot compare number with text"),
+    ('print true + []\n', "cannot add bool and list"),
+    ('print "ab" * 2\n', "cannot do arithmetic on text and number"),
+    ('x: "a"\nprint x - 1\n', "cannot do arithmetic on text and number"),
+    ('x: "a"\nprint -x\n', "cannot negate text"),
+    ('print abs("a")\n', "abs() needs a number"),
+    ('print sum([1, "a"])\n', "sum() needs a list of numbers"),
+    ('print min([])\n', "min() needs at least one value"),
+    ('print max(1, "a")\n', "cannot compare text with number"),
+    ('print range("a")\n', "range() takes 1 to 3 numbers"),
+    ('push(5, 1)\n', "push() needs a list and a value"),
+    ('print split("ab", "")\n', "empty separator"),
 ]
 
 # --- runtime errors must report the ORIGINAL .vx line (source map). Checked

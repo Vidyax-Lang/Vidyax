@@ -18,6 +18,22 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ### v1.3
 
+- Stabilitas: fuzzer differential (`fuzz.py`) — program acak diuji identik di
+  ketiga engine (`python fuzz.py -n 1000`, `--gc-stress`, `--seed` untuk replay).
+  6 kelas bug parity ditemukan & diperbaiki (semua di engine Python, VM-nya benar):
+  - Perbandingan `< > <= >=` tipe campuran membocorkan TypeError mentah Python
+    -> helper `_cmp` bersama, pesan sama dengan VM ("cannot compare X with Y").
+  - Operator `- * %` dan minus unary membocorkan error mentah / semantik Python
+    (`"ab" * 2` jalan di Python!) -> `_arith`/`_neg` ala VM ("cannot do
+    arithmetic on X and Y", "cannot negate X"); `+` kini persis do_add
+    ("cannot add X and Y", list + list didukung).
+  - Builtin teks pakai `str()` Python (trim(false) -> "False") -> `_vstr` semua.
+  - `floor/ceil/round/...` menolak bool padahal bool = angka di seluruh bahasa.
+  - `abs/sum/min/max/range/push/split/join` bocor error mentah (mis. `min([])`).
+  - Read-before-assign di top level: fast path bilang "assigned in this
+    function", walker/VM bilang "not defined" -> seragam "not defined".
+- 16 test regresi baru di-pin dari temuan fuzzer; fuzz bersih 2400+ program
+  (termasuk 400 di bawah --gc-stress).
 - Stdlib operasi list (7 builtin baru, total 35, di ketiga engine):
   `pop(lst[, i])`, `remove`, `insert` (clamp ala Python), `sort` (in-place,
   stabil, tolak tipe campuran dengan pesan sama persis Python/VM), `reverse`,

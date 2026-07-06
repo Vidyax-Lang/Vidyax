@@ -796,9 +796,7 @@ class Interpreter:
         v = self.eval(n.operand, env)
         if n.op == "not": return not vidyax_truthy(v)
         if n.op == "-":
-            if isinstance(v, bool) or not isinstance(v, (int, float)):
-                raise VidyaxError("'-' only works on numbers", n.line, kind="runtime")
-            return -v
+            return _rt(RT["_neg"], n.line, v)   # VM semantics: -true is -1
 
     def eval_BinOp(self, n, env):
         if n.op == "and":
@@ -809,16 +807,15 @@ class Interpreter:
             return l if vidyax_truthy(l) else self.eval(n.r, env)
         l = self.eval(n.l, env); r = self.eval(n.r, env)
         if n.op == "+": return _rt(RT["_add"], n.line, l, r)
-        if n.op == "-": return l - r
-        if n.op == "*": return l * r
         if n.op == "/": return _rt(RT["_div"], n.line, l, r)
-        if n.op == "%": return l % r
+        if n.op in ("-", "*", "%"):
+            return _rt(RT["_arith"], n.line, n.op, l, r)
         if n.op == "==": return l == r
         if n.op == "!=": return l != r
-        if n.op == "<": return l < r
-        if n.op == ">": return l > r
-        if n.op == "<=": return l <= r
-        if n.op == ">=": return l >= r
+        if n.op == "<": return _rt(RT["_cmp"], n.line, l, r) < 0
+        if n.op == ">": return _rt(RT["_cmp"], n.line, l, r) > 0
+        if n.op == "<=": return _rt(RT["_cmp"], n.line, l, r) <= 0
+        if n.op == ">=": return _rt(RT["_cmp"], n.line, l, r) >= 0
         raise VidyaxError(f"unknown operator {n.op}", n.line, kind="runtime")
 
     def eval_Member(self, n, env):
@@ -937,7 +934,7 @@ import keyword
 # Runtime helpers injected into every compiled program.
 RUNTIME = '''# --- Vidyax runtime (auto-generated) ---
 import os as _os, json as _json, urllib.request as _ureq, urllib.error as _uerr
-import math as _math, random as _random
+import math as _math, random as _random, functools as _ft
 
 class _VidyaxRuntime(Exception): pass
 
@@ -950,12 +947,56 @@ def _vstr(v):
     return str(v)
 
 def _add(a, b):
+    # exactly the VM's do_add: text concat, list concat, numbers — else error
     if isinstance(a, str) or isinstance(b, str): return _vstr(a) + _vstr(b)
-    return a + b
+    if isinstance(a, list) and isinstance(b, list): return a + b
+    if isinstance(a, (bool, int, float)) and isinstance(b, (bool, int, float)):
+        return a + b
+    raise _VidyaxRuntime("cannot add %s and %s" % (_b_type(a), _b_type(b)))
+
+def _numlike2(a, b):
+    return isinstance(a, (bool, int, float)) and isinstance(b, (bool, int, float))
 
 def _div(a, b):
+    if not _numlike2(a, b):
+        raise _VidyaxRuntime("cannot do arithmetic on %s and %s"
+                             % (_b_type(a), _b_type(b)))
     if b == 0: raise _VidyaxRuntime("cannot divide by 0")
     return a / b
+
+def _arith(op, a, b):
+    # -, *, % share the VM's rule: numbers only. Raw Python semantics
+    # ("ab" * 2, "%s" % x, str TypeErrors) must never leak into Vidyax.
+    if not _numlike2(a, b):
+        raise _VidyaxRuntime("cannot do arithmetic on %s and %s"
+                             % (_b_type(a), _b_type(b)))
+    if op == "-": return a - b
+    if op == "*": return a * b
+    if b == 0: raise _VidyaxRuntime("cannot divide by 0")
+    return a % b
+
+def _neg(a):
+    if not isinstance(a, (bool, int, float)):
+        raise _VidyaxRuntime("cannot negate %s" % _b_type(a))
+    return -a
+
+def _cmp(a, b):
+    # Ordering comparison shared by BOTH engines, mirroring the VM's
+    # values_cmp exactly: -1/0/1, and the SAME error on incomparable
+    # types (raw Python "'<' not supported..." must never leak out).
+    def _numlike(v): return isinstance(v, (bool, int, float))
+    if _numlike(a) and _numlike(b):
+        x, y = float(a), float(b)
+        return (x > y) - (x < y)
+    if isinstance(a, str) and isinstance(b, str):
+        return (a > b) - (a < b)
+    if isinstance(a, list) and isinstance(b, list):
+        for x, y in zip(a, b):
+            if x == y: continue
+            return _cmp(x, y)
+        return (len(a) > len(b)) - (len(a) < len(b))
+    raise _VidyaxRuntime("cannot compare %s with %s"
+                         % (_b_type(a), _b_type(b)))
 
 def _index(o, i):
     try: return o[int(i)]
@@ -1067,6 +1108,8 @@ def _b_len(x):
     except Exception: raise _VidyaxRuntime("len() needs a list or text")
 
 def _b_range(*a):
+    if any(not isinstance(x, (bool, int, float)) for x in a):
+        raise _VidyaxRuntime("range() takes 1 to 3 numbers")
     a = [int(x) for x in a]
     if len(a) == 1: return list(range(a[0]))
     if len(a) == 2: return list(range(a[0], a[1]))
@@ -1083,18 +1126,48 @@ def _b_num(x):
         try: return float(x)
         except Exception: raise _VidyaxRuntime("cannot convert to number: " + _vstr(x))
 
-def _b_upper(s): return str(s).upper()
-def _b_lower(s): return str(s).lower()
-def _b_split(s, sep=" "): return str(s).split(sep)
-def _b_join(lst, sep=""): return str(sep).join(_vstr(x) for x in lst)
+def _b_upper(s): return _vstr(s).upper()
+def _b_lower(s): return _vstr(s).lower()
+def _b_split(s, sep=" "):
+    sep = _vstr(sep)
+    if sep == "": raise _VidyaxRuntime("empty separator")
+    return _vstr(s).split(sep)
+def _b_join(lst, sep=""):
+    if not isinstance(lst, (list, str)):
+        raise _VidyaxRuntime("join() needs a list")
+    return _vstr(sep).join(_vstr(x) for x in lst)
 def _b_push(lst, x):
+    if not isinstance(lst, list):
+        raise _VidyaxRuntime("push() needs a list and a value")
     lst.append(x); return lst
-def _b_abs(x): return abs(x)
-def _b_sum(x): return sum(x)
-def _b_min(*a):
-    return min(a[0]) if (len(a) == 1 and isinstance(a[0], list)) else min(a)
-def _b_max(*a):
-    return max(a[0]) if (len(a) == 1 and isinstance(a[0], list)) else max(a)
+
+def _b_abs(x):
+    if not isinstance(x, (bool, int, float)):
+        raise _VidyaxRuntime("abs() needs a number")
+    return abs(x)
+
+def _b_sum(x):
+    if not isinstance(x, list) or any(
+            not isinstance(v, (bool, int, float)) for v in x):
+        raise _VidyaxRuntime("sum() needs a list of numbers")
+    return sum(x)
+
+def _minmax(args, want_max, fname):
+    # mirrors the VM's minmax(): one list arg = its items, else the args;
+    # comparisons via _cmp so mixed types fail with the same message
+    items = (args[0] if len(args) == 1 and isinstance(args[0], list)
+             else list(args))
+    if len(items) == 0:
+        raise _VidyaxRuntime("%s() needs at least one value" % fname)
+    best = items[0]
+    for v in items[1:]:
+        c = _cmp(v, best)
+        if (c > 0) if want_max else (c < 0):
+            best = v
+    return best
+
+def _b_min(*a): return _minmax(a, False, "min")
+def _b_max(*a): return _minmax(a, True, "max")
 def _b_type(x):
     if isinstance(x, bool): return "bool"
     if isinstance(x, (int, float)): return "number"
@@ -1106,8 +1179,10 @@ def _b_type(x):
 def _b_get(url):
     # Simple HTTP GET. Raises a Vidyax error on failure so the user can
     # handle it with try/catch, like every other error in the language.
+    if not isinstance(url, str):
+        raise _VidyaxRuntime("get() needs a text URL")
     try:
-        req = _ureq.Request(str(url), headers={"User-Agent": "vidyax/1.1"})
+        req = _ureq.Request(url, headers={"User-Agent": "vidyax/1.1"})
         with _ureq.urlopen(req, timeout=15) as r:
             return r.read().decode("utf-8", "replace")
     except _uerr.HTTPError as e:
@@ -1118,22 +1193,28 @@ def _b_get(url):
         raise _VidyaxRuntime("get() failed: %s" % e)
 
 def _b_readfile(path):
+    if not isinstance(path, str):
+        raise _VidyaxRuntime("readfile() needs a text path")
     try:
-        with open(str(path), "r", encoding="utf-8", errors="replace") as f:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
             return f.read()
     except OSError as e:
         raise _VidyaxRuntime("readfile() failed: %s" % (e.strerror or e))
 
 def _b_writefile(path, txt):
+    if not isinstance(path, str):
+        raise _VidyaxRuntime("writefile() needs a text path and a value")
     try:
-        with open(str(path), "w", encoding="utf-8") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(_vstr(txt))
         return None
     except OSError as e:
         raise _VidyaxRuntime("writefile() failed: %s" % (e.strerror or e))
 
 def _num_arg(fname, x):
-    if isinstance(x, bool) or not isinstance(x, (int, float)):
+    # bools count as numbers (true=1, false=0) — same as the VM's numlike()
+    # and the rest of the language ("true + 1" is 2 everywhere).
+    if not isinstance(x, (int, float)):
         raise _VidyaxRuntime("%s() needs a number" % fname)
     return x
 
@@ -1179,17 +1260,17 @@ def _b_replace(s, old, new):
     old = _vstr(old)
     if old == "":
         raise _VidyaxRuntime("replace() needs a non-empty text to find")
-    return str(s).replace(old, _vstr(new))
+    return _vstr(s).replace(old, _vstr(new))
 
-def _b_trim(s): return str(s).strip()
+def _b_trim(s): return _vstr(s).strip()
 
 def _b_contains(x, item):
     if isinstance(x, list): return item in x
     if isinstance(x, str):  return _vstr(item) in x
     raise _VidyaxRuntime("contains() needs a list or text")
 
-def _b_startswith(s, p): return str(s).startswith(_vstr(p))
-def _b_endswith(s, p):   return str(s).endswith(_vstr(p))
+def _b_startswith(s, p): return _vstr(s).startswith(_vstr(p))
+def _b_endswith(s, p):   return _vstr(s).endswith(_vstr(p))
 
 def _b_pop(lst, i=None):
     if not isinstance(lst, list):
@@ -1235,7 +1316,7 @@ def _b_sort(lst):
             if c0 is None or _sort_cat(v) != c0:
                 raise _VidyaxRuntime("cannot compare %s with %s"
                                      % (_b_type(lst[0]), _b_type(v)))
-        lst.sort()
+        lst.sort(key=_ft.cmp_to_key(_cmp))   # VM ordering, VM error text
     return lst
 
 def _b_reverse(lst):
@@ -1267,6 +1348,15 @@ def _errtext(e):
     m = str(e)
     if isinstance(e, UnboundLocalError):
         name = m.split("'")[1] if m.count("'") >= 2 else "?"
+        # Top-level code runs inside _main(), where read-before-assign is
+        # "not defined" (matching the walker and the VM); the "assigned in
+        # this function" wording is only right inside a USER function.
+        tb, fn = e.__traceback__, None
+        while tb is not None:
+            fn = tb.tb_frame.f_code.co_name
+            tb = tb.tb_next
+        if fn == "_main":
+            return "variable '%s' is not defined" % name
         return ("variable '%s' is assigned in this function "
                 "but used before it has a value" % name)
     if isinstance(e, NameError):
@@ -1453,15 +1543,18 @@ class Transpiler:
         if t == "UnaryOp":
             if n.op == "not":
                 return f"(not {self.expr(n.operand)})"
-            return f"(-{self.expr(n.operand)})"
+            return f"_neg({self.expr(n.operand)})"
         if t == "BinOp":
             l = self.expr(n.l); r = self.expr(n.r)
             if n.op == "and": return f"({l} and {r})"
             if n.op == "or":  return f"({l} or {r})"
             if n.op == "+":   return f"_add({l}, {r})"
             if n.op == "/":   return f"_div({l}, {r})"
-            if n.op in ("-", "*", "%"): return f"({l} {n.op} {r})"
-            return f"({l} {n.op} {r})"   # comparisons map 1:1
+            if n.op in ("-", "*", "%"):
+                return f"_arith({n.op!r}, {l}, {r})"
+            if n.op in ("<", ">", "<=", ">="):   # ordering: VM semantics
+                return f"(_cmp({l}, {r}) {n.op} 0)"
+            return f"({l} {n.op} {r})"   # == and != map 1:1
         if t == "Call":
             args = ", ".join(self.expr(a) for a in n.args)
             callee = n.callee
@@ -1551,6 +1644,7 @@ def run_fast_text(source):
             raise VidyaxError(str(e), line, kind="runtime")
         # dynamic runtime errors the static type_check() pass couldn't
         # see — report them Vidyax-style instead of a raw traceback
+        # (_errtext also maps top-level UnboundLocal -> "not defined")
         raise VidyaxError(ns["_errtext"](e), line, kind=_runtime_kind(e))
 
 
