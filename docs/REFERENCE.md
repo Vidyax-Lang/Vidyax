@@ -289,6 +289,7 @@ the required environment variable.
 | `vidyax debug <file.vx>`  | run under the VVM line debugger (`b`/`c`/`s`/`n`/`bt`/`locals`) |
 | `vidyax profile <file.vx>` | run on the VVM + per-function/per-line instruction profile |
 | `vidyax check <file.vx>` | static check only, output errors as JSON (`-` = stdin) |
+| `vidyax lsp`             | start the Language Server Protocol server (stdio) |
 | `vidyax test`            | run the built-in tests (both engines) |
 | `vidyax <file.vx>`       | same as `run` |
 
@@ -304,6 +305,19 @@ Running with no arguments opens the interactive REPL:
 
 Roadmap commands (recognized but not yet runnable): `fmt`, `install`, and
 the keywords `agent`, `go`, `use web`, `use database`.
+
+### Language Server (`vidyax lsp`)
+
+A dependency-free LSP server over stdio for any LSP-capable editor:
+live **diagnostics** (same errors as `vidyax check`), **completion**
+(keywords, all builtins with docs, names defined in the file), **hover**
+docs for builtins, and **document symbols** (outline). Example client
+config for Neovim 0.11+:
+
+```lua
+vim.lsp.config['vidyax'] = { cmd = { 'vidyax', 'lsp' }, filetypes = { 'vidyax' } }
+vim.lsp.enable('vidyax')
+```
 
 ---
 

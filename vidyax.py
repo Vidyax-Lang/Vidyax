@@ -1852,6 +1852,7 @@ def main():
             "  vidyax profile <file.vx>   run + per-line instruction profile\n"
             "  vidyax walk <file.vx>      run with the tree-walker (debug)\n"
             "  vidyax check <file.vx|->    static check only, JSON errors (- = stdin)\n"
+            "  vidyax lsp                 start the Language Server (stdio)\n"
             "  vidyax test                run built-in tests (both engines)\n"
         )
         return
@@ -1917,6 +1918,9 @@ def main():
             print(e.show()); sys.exit(1)
         except OSError as e:
             print(f"[Vidyax] cannot read {args[1]}: {e.strerror}"); sys.exit(1)
+    elif cmd == "lsp":
+        import vxlsp  # noqa: the LSP server lives in vxlsp.py
+        vxlsp.main()
     elif cmd == "test":
         from tests import run_all_tests  # noqa
         run_all_tests()

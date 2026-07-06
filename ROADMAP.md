@@ -18,6 +18,12 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ### v1.3
 
+- ~~LSP~~ -> `vidyax lsp` (vxlsp.py, tanpa dependensi, JSON-RPC stdio):
+  diagnostics live (share front-end `check_source`), completion (keyword +
+  35 builtin ber-dokumentasi + nama di dokumen), hover builtin, document
+  symbols. Bisa dipakai editor mana pun ber-klien LSP (Neovim, Helix, dst.);
+  extension VS Code masih pakai jalur `vidyax check`-nya sendiri (migrasi
+  ke klien LSP = ide lanjutan).
 - ~~Profiler~~ -> `vidyax profile file.vx` / `vxvm --profile` (modul
   `vm/profile.c`): deterministik (hitung instruksi, bukan sampling) —
   total + instr/detik, panggilan & porsi instruksi per fungsi, top-10

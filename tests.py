@@ -10,6 +10,7 @@ agree with each other exactly. This is what keeps the two execution
 paths from silently drifting apart again.
 """
 import io
+import json
 import contextlib
 import os
 import subprocess
@@ -385,8 +386,72 @@ def run_all_tests():
         print("  SKIP profile-test 1 (vxvm not built)")
         passed += 1
 
+    # LSP smoke test: full JSON-RPC conversation over stdio
+    def lsp_frame(payload):
+        body = json.dumps(payload).encode()
+        return b"Content-Length: %d\r\n\r\n%s" % (len(body), body)
+
+    def lsp_parse_all(data):
+        msgs = []
+        while data:
+            head, _, rest = data.partition(b"\r\n\r\n")
+            n = int(head.split(b":")[1])
+            msgs.append(json.loads(rest[:n]))
+            data = rest[n:]
+        return msgs
+
+    vx_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vidyax.py")
+    convo = (
+        lsp_frame({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                   "params": {}})
+        + lsp_frame({"jsonrpc": "2.0", "method": "textDocument/didOpen",
+                     "params": {"textDocument": {
+                         "uri": "file:///t.vx",
+                         "text": "x: 5\nprint x +\n"}}})
+        + lsp_frame({"jsonrpc": "2.0", "id": 2,
+                     "method": "textDocument/completion",
+                     "params": {"textDocument": {"uri": "file:///t.vx"},
+                                "position": {"line": 0, "character": 0}}})
+        + lsp_frame({"jsonrpc": "2.0", "id": 3, "method": "textDocument/hover",
+                     "params": {"textDocument": {"uri": "file:///t.vx"},
+                                "position": {"line": 1, "character": 1}}})
+        + lsp_frame({"jsonrpc": "2.0", "id": 4, "method": "shutdown",
+                     "params": {}})
+        + lsp_frame({"jsonrpc": "2.0", "method": "exit", "params": {}})
+    )
+    r = subprocess.run([sys.executable, vx_py, "lsp"], input=convo,
+                       capture_output=True, timeout=30)
+    problems = []
+    try:
+        msgs = lsp_parse_all(r.stdout)
+        by_id = {m.get("id"): m for m in msgs if "id" in m}
+        caps = by_id[1]["result"]["capabilities"]
+        if not caps.get("completionProvider") and "completionProvider" not in caps:
+            problems.append("no completion capability")
+        diag = [m for m in msgs
+                if m.get("method") == "textDocument/publishDiagnostics"]
+        if not diag or not diag[0]["params"]["diagnostics"]:
+            problems.append("no diagnostics for a syntax error")
+        elif diag[0]["params"]["diagnostics"][0]["range"]["start"]["line"] != 1:
+            problems.append("diagnostic on the wrong line")
+        labels = {i["label"] for i in by_id[2]["result"]}
+        for want in ("readfile", "sort", "func", "x"):
+            if want not in labels:
+                problems.append(f"completion missing {want!r}")
+        hover = by_id[3]["result"]
+        if not hover or "print" not in hover["contents"]["value"]:
+            problems.append(f"hover on 'print' gave {hover!r}")
+    except Exception as e:
+        problems.append(f"bad LSP transcript: {e} (stderr={r.stderr!r})")
+    if problems:
+        failed += 1
+        print("  FAIL lsp-test 1: " + " | ".join(problems))
+    else:
+        passed += 1
+        print("  PASS lsp-test 1")
+
     total = (len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
-             + len(CATEGORY_CASES) + len(REPL_CASES) + 3)
+             + len(CATEGORY_CASES) + len(REPL_CASES) + 4)
     print(f"\n{passed}/{total} tests passed (each on BOTH engines)")
     if failed:
         raise SystemExit(1)
