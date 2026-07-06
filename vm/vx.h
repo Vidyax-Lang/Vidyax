@@ -202,4 +202,11 @@ uint32_t line_for(const Proto *p, uint32_t ip);
 extern int vx_debug;
 void debug_hook(void);
 
+/* ---- profile.c (--profile) ---- */
+extern int vx_profile;
+void prof_init(void);
+void prof_instr(const Proto *p, uint32_t ip);
+void prof_call(const Proto *p);
+void prof_report(void);
+
 #endif /* VX_H */

@@ -127,6 +127,13 @@ vxvm --max-instr 50000000 --max-mem 268435456 --max-time 5 prog.vxc
   (slots + own-scope env, hidden `$` names filtered), `stack` operand
   stack, `q` quit. Prompt and output go to **stderr** so the program's
   stdout stays clean.
+- **Profiler** — `vxvm --profile prog.vxc` (or `vidyax profile prog.vx`,
+  module `vm/profile.c`): deterministic — counts instructions rather
+  than samples, attributed per function and per .vx line through the v3
+  line table (an O(1) per-offset cache is built at startup). The report
+  (stderr) lists totals, per-function calls + instruction share, and the
+  top-10 hot lines. Profiler bookkeeping deliberately bypasses the
+  tracked allocator so it never perturbs `--max-mem` or GC thresholds.
 - **Disassembler** — `vidyax disasm <file.vxc|file.vx>` prints a full
   listing (constant pool, per-proto slot layout, decoded instructions
   with resolved names and jump targets). `vxc.disassemble()` is the

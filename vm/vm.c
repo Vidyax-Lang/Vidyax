@@ -85,6 +85,8 @@ static void run(void) {
             (double)(clock() - start_clock) / CLOCKS_PER_SEC > max_secs)
             vm_error("VM PANIC: time limit exceeded (%.1fs)", max_secs);
         if (vx_debug) debug_hook();
+        if (vx_profile) prof_instr(frames[nframes - 1].proto,
+                                   frames[nframes - 1].ip);
         Frame *fr = &frames[nframes - 1];
         uint8_t *code = fr->proto->code;
         uint8_t op = code[fr->ip++];
@@ -206,6 +208,7 @@ static void run(void) {
                     vm_error("function '%s' needs %d args, got %d",
                              pr->name->chars, pr->nparams, argc);
                 if (nframes >= FRAMES_MAX) vm_error("recursion too deep");
+                if (vx_profile) prof_call(pr);
                 /* args become the first stack slots: shift them one
                    position down, over the callee value */
                 int base = sp - argc - 1;
@@ -342,6 +345,8 @@ int main(int argc, char **argv) {
             allow_fs = 1;    /* opt in to files for readfile() / writefile() */
         else if (strcmp(argv[i], "--debug") == 0)
             vx_debug = 1;    /* interactive line debugger (see debug.c) */
+        else if (strcmp(argv[i], "--profile") == 0)
+            vx_profile = 1;  /* per-line instruction profile (profile.c) */
         else if (strcmp(argv[i], "--gc-stress") == 0)
             gc_stress = 1;   /* collect at EVERY safepoint (testing) */
         else if (strcmp(argv[i], "--gc-stats") == 0)
@@ -363,6 +368,7 @@ int main(int argc, char **argv) {
     load(path);
     if (nprotos == 0) { fprintf(stderr, "[Vidyax] empty program\n"); return 1; }
     verify();
+    if (vx_profile) prof_init();
 #ifdef VX_HAVE_CURL
     curl_global_init(CURL_GLOBAL_DEFAULT);
 #endif
@@ -371,5 +377,6 @@ int main(int argc, char **argv) {
 #ifdef VX_HAVE_CURL
     curl_global_cleanup();
 #endif
+    if (vx_profile) prof_report();
     return 0;
 }

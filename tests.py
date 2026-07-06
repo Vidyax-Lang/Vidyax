@@ -358,8 +358,35 @@ def run_all_tests():
         print("  SKIP debug-test 1 (vxvm not built)")
         passed += 1
 
+    # profiler smoke test: report must attribute the work to the function
+    if os.path.exists(vm_bin):
+        with tempfile.TemporaryDirectory() as td:
+            pvx = os.path.join(td, "prof.vx")
+            with open(pvx, "w") as f:
+                f.write('func tri(n):\n    if n <= 0:\n        return 0\n'
+                        '    return n + tri(n - 1)\nprint tri(50)\n')
+            ppath = vxc.compile_file(pvx)
+            r = subprocess.run([vm_bin, "--profile", ppath],
+                               capture_output=True, text=True, timeout=30)
+        problems = []
+        if r.stdout.strip() != "1275":
+            problems.append(f"program output {r.stdout!r}, want '1275'")
+        for want in ["== Vidyax profile ==", "per function:", "tri",
+                     "hot lines:", "line "]:
+            if want not in r.stderr:
+                problems.append(f"report missing {want!r}")
+        if problems:
+            failed += 1
+            print("  FAIL profile-test 1: " + " | ".join(problems))
+        else:
+            passed += 1
+            print("  PASS profile-test 1")
+    else:
+        print("  SKIP profile-test 1 (vxvm not built)")
+        passed += 1
+
     total = (len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
-             + len(CATEGORY_CASES) + len(REPL_CASES) + 2)
+             + len(CATEGORY_CASES) + len(REPL_CASES) + 3)
     print(f"\n{passed}/{total} tests passed (each on BOTH engines)")
     if failed:
         raise SystemExit(1)

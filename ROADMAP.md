@@ -18,6 +18,10 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ### v1.3
 
+- ~~Profiler~~ -> `vidyax profile file.vx` / `vxvm --profile` (modul
+  `vm/profile.c`): deterministik (hitung instruksi, bukan sampling) —
+  total + instr/detik, panggilan & porsi instruksi per fungsi, top-10
+  hot lines via line table v3. Bookkeeping-nya di luar akuntansi GC/--max-mem.
 - ~~Debugger~~ -> `vidyax debug file.vx` / `vxvm --debug` (modul `vm/debug.c`):
   breakpoint per baris .vx (`b`/`d`), `c`/`s` (step into)/`n` (step over),
   `bt` backtrace, `locals` (tanpa nama internal `$`), `stack`. Ditenagai

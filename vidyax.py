@@ -1849,6 +1849,7 @@ def main():
             "  vidyax bytecode <file.vx>  compile to VVM bytecode <file>.vxc\n"
             "  vidyax disasm <file.vxc>   disassemble VVM bytecode (or a .vx)\n"
             "  vidyax debug <file.vx>     run under the VVM line debugger\n"
+            "  vidyax profile <file.vx>   run + per-line instruction profile\n"
             "  vidyax walk <file.vx>      run with the tree-walker (debug)\n"
             "  vidyax check <file.vx|->    static check only, JSON errors (- = stdin)\n"
             "  vidyax test                run built-in tests (both engines)\n"
@@ -1883,9 +1884,9 @@ def main():
         if len(args) < 2:
             print("[Vidyax] usage: vidyax check <file.vx | ->"); sys.exit(1)
         check_file(args[1])
-    elif cmd == "debug":
+    elif cmd in ("debug", "profile"):
         if len(args) < 2:
-            print("[Vidyax] usage: vidyax debug <file.vx> [vxvm flags]")
+            print(f"[Vidyax] usage: vidyax {cmd} <file.vx> [vxvm flags]")
             sys.exit(1)
         vm_bin = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               "vm", "vxvm")
@@ -1900,7 +1901,7 @@ def main():
             with tempfile.NamedTemporaryFile(suffix=".vxc") as f:
                 f.write(c.serialize()); f.flush()
                 # extra flags (e.g. --allow-net) pass straight to vxvm
-                r = subprocess.run([vm_bin, "--debug", *args[2:], f.name])
+                r = subprocess.run([vm_bin, f"--{cmd}", *args[2:], f.name])
             sys.exit(r.returncode)
         except VidyaxError as e:
             print(e.show()); sys.exit(1)
