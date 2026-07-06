@@ -618,6 +618,134 @@ class Compiler:
         return bytes(out)
 
 
+# --- disassembler: the living documentation of the .vxc format ---
+_OPNAME = {code: name for name, code in OPS.items()}
+
+
+def disassemble(data):
+    """Render a .vxc image as readable text. Raises VidyaxError on a
+    corrupt file. This is the reference reader for the format described
+    in the module docstring — `vidyax disasm <file>` prints it."""
+    pos = [0]
+
+    def need(n):
+        if pos[0] + n > len(data):
+            raise VidyaxError("corrupt .vxc file (truncated)")
+
+    def u8():
+        need(1); v = data[pos[0]]; pos[0] += 1; return v
+
+    def u16():
+        need(2); v = struct.unpack_from("<H", data, pos[0])[0]; pos[0] += 2; return v
+
+    def u32():
+        need(4); v = struct.unpack_from("<I", data, pos[0])[0]; pos[0] += 4; return v
+
+    def f64():
+        need(8); v = struct.unpack_from("<d", data, pos[0])[0]; pos[0] += 8; return v
+
+    need(4)
+    if bytes(data[:4]) != b"VXC1":
+        raise VidyaxError("not a .vxc file (bad magic)")
+    pos[0] = 4
+    version = u8()
+
+    consts = []
+    for _ in range(u32()):
+        tag = u8()
+        if tag == 1:
+            consts.append(f64())
+        elif tag == 2:
+            n = u32(); need(n)
+            consts.append(data[pos[0]:pos[0] + n].decode("utf-8", "replace"))
+            pos[0] += n
+        else:
+            raise VidyaxError("corrupt .vxc file (bad const tag)")
+
+    def cstr(ix):
+        if ix >= len(consts) or not isinstance(consts[ix], str):
+            raise VidyaxError("corrupt .vxc file (bad name index)")
+        return consts[ix]
+
+    def crepr(ix):
+        if ix >= len(consts):
+            return "?"
+        v = consts[ix]
+        if isinstance(v, float):
+            return str(int(v)) if v.is_integer() else str(v)
+        return '"%s"' % v
+
+    protos = []
+    for _ in range(u32()):
+        name = cstr(u32())
+        params = [cstr(u32()) for _ in range(u8())]
+        slots = [cstr(u32()) for _ in range(u16())]
+        esc = [u8() for _ in range(u8())]
+        declared = [cstr(u32()) for _ in range(u16())]
+        codelen = u32(); need(codelen)
+        code = data[pos[0]:pos[0] + codelen]; pos[0] += codelen
+        protos.append((name, params, slots, esc, declared, code))
+
+    lines = ["; Vidyax bytecode VXC1 v%d — %d consts, %d protos"
+             % (version, len(consts), len(protos))]
+    if len(consts) <= 40:
+        lines.append("consts:")
+        for i in range(len(consts)):
+            lines.append("  [%d] %s" % (i, crepr(i)))
+
+    for pi, (name, params, slots, esc, declared, code) in enumerate(protos):
+        head = "proto %d <%s>  params=(%s)" % (pi, name, ", ".join(params))
+        if slots:
+            head += "  slots=(%s)" % ", ".join(slots)
+        if esc:
+            head += "  esc=%s" % esc
+        if declared:
+            head += "  declared=(%s)" % ", ".join(declared)
+        lines.append("")
+        lines.append(head)
+        i = 0
+        while i < len(code):
+            op = code[i]
+            nm = _OPNAME.get(op)
+            if nm is None:
+                lines.append("  %04d ???(%d)" % (i, op))
+                i += 1
+                continue
+            w = _OPSIZE.get(op, 0)
+            if i + 1 + w > len(code):
+                raise VidyaxError("corrupt .vxc file (truncated operand)")
+            if w == 0:
+                lines.append("  %04d %s" % (i, nm))
+            else:
+                arg = int.from_bytes(code[i + 1:i + 1 + w], "little")
+                note = ""
+                if nm == "CONST":
+                    note = "  ; %s" % crepr(arg)
+                elif nm in ("LOAD", "STORE", "GET_MEMBER"):
+                    note = "  ; %s" % cstr(arg)
+                elif nm in ("LOAD_SLOT", "STORE_SLOT") and arg < len(slots):
+                    note = "  ; %s" % slots[arg]
+                elif nm == "MAKE_FUNC" and arg < len(protos):
+                    note = "  ; <%s>" % protos[arg][0]
+                elif nm in ("JMP", "JMP_IF_FALSE", "JIF_PEEK",
+                            "JIT_PEEK", "TRY_PUSH"):
+                    note = "  ; -> %04d" % arg
+                lines.append("  %04d %-13s %d%s" % (i, nm, arg, note))
+            i += 1 + w
+    return "\n".join(lines) + "\n"
+
+
+def disasm_file(path):
+    """`vidyax disasm x.vxc` — or x.vx, which is compiled in memory."""
+    if path.endswith((".vx", ".vax")):
+        with open(path, encoding="utf-8") as f:
+            data = compile_source(f.read()).serialize()
+    else:
+        with open(path, "rb") as f:
+            data = f.read()
+    return disassemble(data)
+
+
 def compile_source(source):
     tokens = vidyax.lex(source)
     ast = vidyax.Parser(tokens).parse()

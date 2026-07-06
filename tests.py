@@ -302,8 +302,34 @@ def run_all_tests():
             passed += 1
             print(f"  PASS repl-test {i} (#{base4 + i})")
 
+    # disassembler smoke test: compile a program, disasm both the .vx and
+    # the .vxc file, and check the expected structure is in the listing
+    import tempfile
+    import vxc
+    dis_src = 'func sq(n):\n    return n * n\nprint sq(7)\n'
+    with tempfile.TemporaryDirectory() as td:
+        vx = os.path.join(td, "d.vx")
+        with open(vx, "w") as f:
+            f.write(dis_src)
+        listing_vx = vxc.disasm_file(vx)
+        vxc_path = vxc.compile_file(vx)
+        listing_vxc = vxc.disasm_file(vxc_path)
+    problems = []
+    if listing_vx != listing_vxc:
+        problems.append("disasm(.vx) != disasm(.vxc)")
+    for want in ["proto 1 <sq>", "LOAD_SLOT", "MUL", "MAKE_FUNC", "CALL",
+                 "PRINT", "HALT"]:
+        if want not in listing_vx:
+            problems.append(f"listing missing {want!r}")
+    if problems:
+        failed += 1
+        print("  FAIL disasm-test 1: " + " | ".join(problems))
+    else:
+        passed += 1
+        print("  PASS disasm-test 1")
+
     total = (len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
-             + len(CATEGORY_CASES) + len(REPL_CASES))
+             + len(CATEGORY_CASES) + len(REPL_CASES) + 1)
     print(f"\n{passed}/{total} tests passed (each on BOTH engines)")
     if failed:
         raise SystemExit(1)

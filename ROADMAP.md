@@ -18,6 +18,10 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ### v1.3
 
+- Disassembler `vidyax disasm <file.vxc|file.vx>` — listing lengkap: pool
+  konstanta, layout slot per proto, instruksi terdecode (nama & target jump
+  ter-resolve). `vxc.disassemble()` = pembaca rujukan format .vxc, sekaligus
+  dokumentasi bytecode yang hidup.
 - Stabilitas: fuzzer differential (`fuzz.py`) — program acak diuji identik di
   ketiga engine (`python fuzz.py -n 1000`, `--gc-stress`, `--seed` untuk replay).
   6 kelas bug parity ditemukan & diperbaiki (semua di engine Python, VM-nya benar):

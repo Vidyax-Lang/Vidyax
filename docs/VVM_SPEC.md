@@ -116,6 +116,11 @@ vxvm --max-instr 50000000 --max-mem 268435456 --max-time 5 prog.vxc
   default, raising a catchable error unless the flag is passed:
   HTTP (`get()`, `ai.ask`) behind **`--allow-net`**, and file access
   (`readfile()`, `writefile()`) behind **`--allow-fs`**.
+- **Disassembler** — `vidyax disasm <file.vxc|file.vx>` prints a full
+  listing (constant pool, per-proto slot layout, decoded instructions
+  with resolved names and jump targets). `vxc.disassemble()` is the
+  reference reader for the format; when the format changes, the
+  disassembler and this spec must change with it.
 - **Bytecode verification** — before execution: valid opcodes,
   non-truncated operands, in-range constant/proto indices, LOAD/STORE
   pointing at text constants, and every jump target landing exactly on an

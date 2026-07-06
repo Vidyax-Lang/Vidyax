@@ -19,6 +19,13 @@ import json
 import urllib.request
 import urllib.error
 
+# When executed as `python vidyax.py`, this module is loaded as __main__;
+# vxc.py's `import vidyax` would then load a SECOND copy, whose VidyaxError
+# is a different class — and `except VidyaxError` in the CLI would miss it.
+# Alias the module so every importer shares this one instance.
+if __name__ == "__main__":
+    sys.modules.setdefault("vidyax", sys.modules["__main__"])
+
 VERSION = "1.3"
 
 # =====================================================================
@@ -1831,6 +1838,7 @@ def main():
             "  vidyax run <file.vx>       run a file\n"
             "  vidyax build <file.vx>     compile to a standalone <file>.py\n"
             "  vidyax bytecode <file.vx>  compile to VVM bytecode <file>.vxc\n"
+            "  vidyax disasm <file.vxc>   disassemble VVM bytecode (or a .vx)\n"
             "  vidyax walk <file.vx>      run with the tree-walker (debug)\n"
             "  vidyax check <file.vx|->    static check only, JSON errors (- = stdin)\n"
             "  vidyax test                run built-in tests (both engines)\n"
@@ -1865,6 +1873,16 @@ def main():
         if len(args) < 2:
             print("[Vidyax] usage: vidyax check <file.vx | ->"); sys.exit(1)
         check_file(args[1])
+    elif cmd == "disasm":
+        if len(args) < 2:
+            print("[Vidyax] usage: vidyax disasm <file.vxc|file.vx>"); sys.exit(1)
+        try:
+            import vxc  # noqa
+            print(vxc.disasm_file(args[1]), end="")
+        except VidyaxError as e:
+            print(e.show()); sys.exit(1)
+        except OSError as e:
+            print(f"[Vidyax] cannot read {args[1]}: {e.strerror}"); sys.exit(1)
     elif cmd == "test":
         from tests import run_all_tests  # noqa
         run_all_tests()
