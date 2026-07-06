@@ -136,7 +136,7 @@ cd ..
 This compiles the C source into the `vxvm` binary. Alternatively, you can invoke the compiler directly:
 
 ```bash
-gcc -O2 -Wall -Wextra -o vm/vxvm vm/vxvm.c -lm
+make -C vm        # or: cc -O2 -o vm/vxvm vm/*.c -lm -lcurl
 ```
 
 **3. Run a Vidyax program**

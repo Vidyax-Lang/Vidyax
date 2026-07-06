@@ -18,6 +18,12 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ### v1.3
 
+- ~~Pecah vxvm.c jadi modular~~ -> `vm/` kini 6 modul + 1 header:
+  `vx.h` (tipe + API bersama), `value.c` (konstruktor, env, format angka,
+  semantik eq/cmp/add/index), `gc.c` (alokasi + mark-sweep), `net.c`
+  (JSON + libcurl + modul ai), `builtins.c` (35 builtin), `loader.c`
+  (loader .vxc + verifier), `vm.c` (state global, dispatch loop, main).
+  Perilaku identik (110/110 + fuzz), `vm_error` kini beranotasi noreturn.
 - Disassembler `vidyax disasm <file.vxc|file.vx>` — listing lengkap: pool
   konstanta, layout slot per proto, instruksi terdecode (nama & target jump
   ter-resolve). `vxc.disassemble()` = pembaca rujukan format .vxc, sekaligus

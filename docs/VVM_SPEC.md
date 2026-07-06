@@ -1,7 +1,7 @@
 # Vidyax Virtual Machine (VVM) — Architecture Specification v1.1
 
 A revision of the v1 blueprint, aligned with the actual implementation in
-`vm/vxvm.c` (C) + `vxc.py` (VIR compiler). Changes from blueprint v1 are
+`vm/` (C, modular: vm.c, value.c, gc.c, net.c, builtins.c, loader.c + vx.h) + `vxc.py` (VIR compiler). Changes from blueprint v1 are
 marked **[revised]** along with the reason. Status: a living document —
 the implementation and spec must always stay in sync.
 
@@ -88,7 +88,7 @@ u32     proto count; each proto (proto 0 = top level):
 ```
 
 37 opcodes (see the `OPS` table in `vxc.py` — the single source of
-numbering; `vm/vxvm.c` must stay in sync). Operands: u16 (constant/name),
+numbering; the enum in `vm/vx.h` must stay in sync). Operands: u16 (constant/name),
 u8 (argc), u32 (absolute jump target).
 
 `rpt`/`for..in` loops are desugared by the compiler into hidden counters
