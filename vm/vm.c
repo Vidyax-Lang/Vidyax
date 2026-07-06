@@ -59,6 +59,9 @@ static void run(void) {
     frames[0].ip = 0;
     frames[0].env = global;
     frames[0].base = 0;
+    /* main's slots (top-level escape analysis) live at the stack bottom */
+    for (int i = 0; i < protos[0].nslots; i++)
+        push(vunset());
     nframes = 1;
 
     jmp_armed = 1;
@@ -110,10 +113,14 @@ static void run(void) {
         case OP_LOAD_SLOT: {
             uint16_t ix; memcpy(&ix, code + fr->ip, 2); fr->ip += 2;
             Value v = stack[fr->base + ix];
-            if (v.t == V_UNSET)   /* same rule, same words as the engines */
+            if (v.t == V_UNSET) {  /* same rule, same words as the engines */
+                if (fr == &frames[0])   /* top level says "not defined" */
+                    vm_error("variable '%s' is not defined",
+                             fr->proto->slot_names[ix]->chars);
                 vm_error("variable '%s' is assigned in this function "
                          "but used before it has a value",
                          fr->proto->slot_names[ix]->chars);
+            }
             push(v);
             break;
         }

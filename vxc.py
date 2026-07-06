@@ -492,6 +492,14 @@ class Compiler:
         esc = escaping_names(ast.body)
         main.escaping = [n for n in all_locals if n in esc]
         main.safe = [n for n in all_locals if n not in esc]
+        # Escape analysis for the top level too: names never read by a
+        # nested function live in stack slots (STORE/LOAD_SLOT), not in
+        # the global env — top-level loops get the same speed as
+        # function-local ones. Escaping names stay env-based so closures
+        # keep seeing them.
+        main.use_slots = True
+        main.slots = list(main.safe)
+        main.slot_of = {name: i for i, name in enumerate(main.slots)}
         self.protos.append(main)
         ctx = {"loops": [], "trydepth": 0, "hidden": 0}
         self.block(main, ast.body, ctx)

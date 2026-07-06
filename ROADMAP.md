@@ -10,7 +10,7 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ## Ide lain (belum diprioritaskan)
 
-- Optimizer lanjutan: escape analysis untuk alokasi, IR/SSA formal.
+- Optimizer lanjutan: IR/SSA formal.
 - Native backend (sekarang baru VM bytecode).
 - Concurrency, package manager, LSP, debugger (target jangka panjang).
 
@@ -18,6 +18,10 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ### v1.3
 
+- ~~Optimizer: escape analysis top-level~~ -> `<main>` kini slot-based seperti
+  fungsi: nama top-level yang tidak dibaca fungsi manapun tinggal di stack
+  slot (O(1)), bukan env global (linear scan). ~1,9x di loop panas dengan 60
+  global; pesan "not defined" untuk slot main yang belum diisi tetap sama.
 - ~~Optimizer: inlining~~ -> pass inlining di vxc.py (VM saja; engine Python
   tetap referensi — differential test + fuzzer membuktikan perilaku identik).
   Aturan konservatif: body `return <expr>` (param-only + builtin, tanpa

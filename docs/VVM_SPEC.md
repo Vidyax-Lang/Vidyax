@@ -57,6 +57,12 @@ Python), `func` (proto + closure env), `builtin`.
   before it has a value`.
 - Environment keys are compared **by pointer** — valid because the
   constant pool is deduplicated by the compiler.
+- **Escape analysis covers the top level too**: a top-level name that no
+  nested function reads lives in a stack slot of `<main>` (O(1) access)
+  instead of the global env (O(#names) scan) — ~1.9× on a hot loop in a
+  program with 60 globals. Escaping names stay env-based so closures
+  keep seeing them; reading an unset top-level slot still reports
+  `variable 'X' is not defined`, exactly like the Python engines.
 
 ### 2.3 Errors & try/catch (new)
 
