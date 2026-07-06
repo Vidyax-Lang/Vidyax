@@ -450,6 +450,82 @@ def run_all_tests():
             passed += 1
             print(f"  PASS go-test {i} (#{base5 + i})")
 
+    # module system (`use X`): resolved at the front-end, so it must
+    # behave identically on both Python engines AND the VM.
+    with tempfile.TemporaryDirectory() as td:
+        with open(os.path.join(td, "mathx.vx"), "w") as f:
+            f.write("func sq(n):\n    return n * n\nBASE: 10\n")
+        # diamond: two modules both `use base`, included once
+        with open(os.path.join(td, "base.vx"), "w") as f:
+            f.write("K: 7\n")
+        with open(os.path.join(td, "l.vx"), "w") as f:
+            f.write("use base\nfunc lget():\n    return K\n")
+        with open(os.path.join(td, "r.vx"), "w") as f:
+            f.write("use base\nfunc rget():\n    return K\n")
+        app = os.path.join(td, "app.vx")
+        with open(app, "w") as f:
+            f.write("use mathx\nuse l\nuse r\n"
+                    "print sq(6)\nprint BASE\nprint lget() + rget()\n")
+        with open(app, encoding="utf-8") as f:
+            src = f.read()
+        base_dir = td
+        want_mod = "36\n10\n14\n"
+        problems = []
+        for name, fn in ENGINES:
+            buf = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(buf):
+                    fn(src, base_dir)
+                if buf.getvalue() != want_mod:
+                    problems.append(f"{name} got {buf.getvalue()!r}")
+            except Exception as e2:
+                problems.append(f"{name} errored: {e2}")
+        # and on the VM
+        vm_bin0 = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "vm", "vxvm")
+        if os.path.exists(vm_bin0):
+            import vxc as _vxc
+            c = _vxc.compile_source(src, base_dir)
+            vxcpath = os.path.join(td, "app.vxc")
+            with open(vxcpath, "wb") as f:
+                f.write(c.serialize())
+            rv = subprocess.run([vm_bin0, vxcpath], capture_output=True,
+                                text=True, timeout=30)
+            if rv.stdout != want_mod:
+                problems.append(f"vm got {rv.stdout!r}")
+        # cycle detection is an error, not a hang
+        with open(os.path.join(td, "cyc.vx"), "w") as f:
+            f.write("use cyc\n")
+        try:
+            vidyax.run_text("use cyc\n", base_dir)
+            problems.append("cycle not detected")
+        except vidyax.VidyaxError as e2:
+            if "circular use" not in e2.msg:
+                problems.append(f"wrong cycle error: {e2.msg}")
+    if problems:
+        failed += 1
+        print("  FAIL module-test 1: " + " | ".join(problems))
+    else:
+        passed += 1
+        print("  PASS module-test 1")
+
+    # install: URL derivation is pure; check it without the network
+    iu = vidyax._install_urls
+    problems = []
+    if iu("u/r") != ("r", ["https://raw.githubusercontent.com/u/r/main/r.vx",
+                           "https://raw.githubusercontent.com/u/r/master/r.vx"]):
+        problems.append("bare user/repo")
+    if iu("u/r@dev")[1] != ["https://raw.githubusercontent.com/u/r/dev/r.vx"]:
+        problems.append("@ref ignored")
+    if iu("u/r/lib/x.vx")[0] != "x":
+        problems.append("subpath name")
+    if problems:
+        failed += 1
+        print("  FAIL install-test 1: " + " | ".join(problems))
+    else:
+        passed += 1
+        print("  PASS install-test 1")
+
     # native backend smoke test: compile to a binary, outputs must match
     import shutil as _sh
     if _sh.which(os.environ.get("CC", "cc")):
@@ -551,7 +627,7 @@ def run_all_tests():
         print("  PASS lsp-test 1")
 
     total = (len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
-             + len(CATEGORY_CASES) + len(REPL_CASES) + len(GO_CASES) + 5)
+             + len(CATEGORY_CASES) + len(REPL_CASES) + len(GO_CASES) + 7)
     print(f"\n{passed}/{total} tests passed (each on BOTH engines)")
     if failed:
         raise SystemExit(1)

@@ -12,3 +12,4 @@ vm/vxvm
 *.vxc
 .claude/
 fuzz_failures/
+vx_modules/

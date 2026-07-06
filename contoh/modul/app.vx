@@ -1,0 +1,8 @@
+# Memakai modul: vidyax contoh/modul/app.vx
+# `use mathx` mencari mathx.vx di folder ini dulu.
+
+use mathx
+
+print kuadrat(9)
+print kubik(4)
+print rata([10, 20, 30, 40])

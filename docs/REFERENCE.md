@@ -312,6 +312,7 @@ the required environment variable.
 | `vidyax native <file.vx> [-o out]` | compile to a standalone native binary (needs a C compiler) |
 | `vidyax check <file.vx>` | static check only, output errors as JSON (`-` = stdin) |
 | `vidyax lsp`             | start the Language Server Protocol server (stdio) |
+| `vidyax install <user/repo\|url>` | download a module into `vx_modules/` |
 | `vidyax test`            | run the built-in tests (both engines) |
 | `vidyax <file.vx>`       | same as `run` |
 
@@ -325,8 +326,34 @@ Running with no arguments opens the interactive REPL:
 - **Ctrl-C** cancels a half-typed block or stops a running program
   without leaving the REPL; **Ctrl-D** exits.
 
-Roadmap commands (recognized but not yet runnable): `fmt`, `install`, and
-the keywords `agent`, `go`, `use web`, `use database`.
+Roadmap commands (recognized but not yet runnable): `fmt`, and the
+keyword `agent`.
+
+### Modules (`use`) and packages (`vidyax install`)
+
+`use name` includes another Vidyax file. `name` is resolved, at parse
+time, to `name.vx` — looked up next to the program, then in `vx_modules/`,
+then in `~/.vidyax/modules/`. The module's top-level definitions become
+available as if written inline; a module is included **once** per program
+(diamonds are fine), and circular `use` is an error. `use ai` stays the
+built-in AI module. Because resolution happens in the shared front-end,
+modules behave identically on all four engines.
+
+```vidyax
+use mathx          # loads mathx.vx from ./ or vx_modules/
+print sq(6)
+```
+
+`vidyax install user/repo` downloads a single-file module (the repo's
+`<repo>.vx`) into `vx_modules/`. Variants:
+
+- `vidyax install user/repo@ref` — a specific branch/tag.
+- `vidyax install user/repo/path/to/lib.vx` — a specific file in the repo.
+- `vidyax install https://…/mod.vx` — any direct URL.
+
+The download is parsed before it is saved, so a broken file never lands
+on disk. v1 has no version resolution or dependency locking; a module's
+own `use` lines are resolved relative to the module.
 
 ### Language Server (`vidyax lsp`)
 

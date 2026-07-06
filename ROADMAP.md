@@ -13,13 +13,20 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 ## Ide lain (belum diprioritaskan)
 
 - SSA penuh di atas lapisan CFG (phi node, versi variabel) — baru berguna
-  saat native backend dikerjakan.
-- Native backend (sekarang baru VM bytecode).
-- Concurrency, package manager, LSP, debugger (target jangka panjang).
+  saat optimasi native lanjutan dikerjakan.
+- Package manager v2: resolusi versi + lockfile (v1 tanpa versi).
+- Migrasi extension VS Code ke klien LSP `vidyax lsp`.
 
 ## Selesai
 
 ### v1.3
+
+- ~~Package manager~~ -> sistem modul `use X` diselesaikan di FRONT-END
+  (splice AST modul saat parse: dedup include-once + deteksi siklus;
+  resolusi ./ -> vx_modules/ -> ~/.vidyax/modules), jadi identik di KEEMPAT
+  engine tanpa menyentuh VM. `vidyax install user/repo[@ref | /path.vx | url]`
+  mengunduh modul single-file (divalidasi parse sebelum disimpan) ke
+  vx_modules/. 2 test baru (module + install) di tests.py.
 
 - Concurrency Fase D: native backend ikut menjalankan `go`/`wait` —
   `task.c` jadi engine-agnostik via hook `vx_task_runner` (VM: loop

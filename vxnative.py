@@ -449,7 +449,8 @@ def emit_c(c):
 
 def native_file(path, out=None, keep_c=False):
     with open(path, encoding="utf-8") as f:
-        c = vxc.compile_source(f.read())
+        c = vxc.compile_source(f.read(),
+                               os.path.dirname(os.path.abspath(path)))
     c.serialize()          # runs peephole + CFG passes and interns names
     csrc = emit_c(c)
     out = out or os.path.splitext(path)[0]

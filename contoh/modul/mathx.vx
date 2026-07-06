@@ -1,0 +1,11 @@
+# Modul contoh — dipakai lewat `use mathx`.
+# (letakkan di folder yang sama dengan program, atau di vx_modules/)
+
+func kuadrat(n):
+    return n * n
+
+func kubik(n):
+    return n * n * n
+
+func rata(daftar):
+    return sum(daftar) / len(daftar)

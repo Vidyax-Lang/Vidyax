@@ -944,10 +944,75 @@ def type_check(program):
 
 
 # --- front-end phase boundaries: attach an error category ---
-def _parse_source(source):
-    """Lex + parse. Any failure here is the code being written wrong."""
+def _module_paths(base_dir):
+    """Where `use X` looks for X.vx, in order."""
+    return [base_dir,
+            os.path.join(base_dir, "vx_modules"),
+            os.path.join(os.path.expanduser("~"), ".vidyax", "modules")]
+
+
+def expand_uses(ast, base_dir, _loading=None, _loaded=None):
+    """Resolve every `use X` (except the builtin `ai` and the roadmap
+    names) at the FRONT-END: the module file's statements are spliced in
+    place of the `use`, like a compile-time include. Because this runs
+    before the engines ever see the AST, all four engines get modules
+    for free — and stay identical by construction.
+
+    Rules: a module is included ONCE per program (repeats are skipped);
+    cycles are an error; nested `use` resolves relative to the module's
+    own directory first."""
+    _loading = [] if _loading is None else _loading
+    _loaded = set() if _loaded is None else _loaded
+    out = []
+    for s in ast.body:
+        if (type(s).__name__ != "Import"
+                or s.name in ("ai", "web", "database")):
+            out.append(s)
+            continue
+        path = None
+        for d in _module_paths(base_dir):
+            cand = os.path.join(d, s.name + ".vx")
+            if os.path.isfile(cand):
+                path = os.path.abspath(cand)
+                break
+        if path is None:
+            raise VidyaxError(
+                f"module '{s.name}' not found — looked for '{s.name}.vx' "
+                "next to the program, in vx_modules/, and in "
+                "~/.vidyax/modules (install with: vidyax install ...)",
+                getattr(s, "line", None))
+        if path in _loading:
+            raise VidyaxError(f"circular use: '{s.name}' is already being "
+                              "loaded", getattr(s, "line", None))
+        if path in _loaded:
+            continue          # include-once
+        _loaded.add(path)
+        try:
+            with open(path, encoding="utf-8") as f:
+                mod_src = f.read()
+        except OSError as e:
+            raise VidyaxError(f"cannot read module '{s.name}': "
+                              f"{e.strerror}", getattr(s, "line", None))
+        try:
+            mod_ast = Parser(lex(mod_src)).parse()
+        except VidyaxError as e:
+            e.msg = f"in module '{s.name}': {e.msg}"
+            raise
+        _loading.append(path)
+        expand_uses(mod_ast, os.path.dirname(path), _loading, _loaded)
+        _loading.pop()
+        out.extend(mod_ast.body)
+    ast.body = out
+    return ast
+
+
+def _parse_source(source, base_dir=None):
+    """Lex + parse + resolve `use` modules. Any failure here is the code
+    being written wrong."""
     try:
-        return Parser(lex(source)).parse()
+        ast = Parser(lex(source)).parse()
+        expand_uses(ast, base_dir or os.getcwd())
+        return ast
     except VidyaxError as e:
         if e.kind is None:
             e.kind = "syntax"
@@ -1686,12 +1751,12 @@ class Transpiler:
         raise VidyaxError(f"cannot compile expression {t}")
 
 
-def _transpile_program(source, standalone=True):
+def _transpile_program(source, standalone=True, base_dir=None):
     """Vidyax source -> (Python source string, {python_line: vx_line}).
 
     The line map lets the fast path translate a runtime traceback back to
     the original .vx line (the generated Python is compiled as <vidyax>)."""
-    ast = _parse_source(source)
+    ast = _parse_source(source, base_dir)
     _typecheck(ast)
     tr = Transpiler()
     body = tr.transpile(ast)
@@ -1721,9 +1786,9 @@ def _transpile_program(source, standalone=True):
     return py, linemap
 
 
-def compile_to_python(source, standalone=True):
+def compile_to_python(source, standalone=True, base_dir=None):
     """Vidyax source -> Python source string."""
-    py, _ = _transpile_program(source, standalone)
+    py, _ = _transpile_program(source, standalone, base_dir)
     return py
 
 
@@ -1743,11 +1808,12 @@ def _vx_line(tb, linemap):
     return line
 
 
-def run_fast_text(source):
+def run_fast_text(source, base_dir=None):
     """Transpile to Python and execute in-memory (the fast path).
     Raises VidyaxError on failure — used by the CLI and by the
     differential tests, which run every case through BOTH engines."""
-    py, linemap = _transpile_program(source, standalone=False)
+    py, linemap = _transpile_program(source, standalone=False,
+                                     base_dir=base_dir)
     ns = {"__name__": "_vax_main"}
     exec(compile(py, "<vidyax>", "exec"), ns)
     try:
@@ -1766,9 +1832,9 @@ def run_fast_text(source):
         raise VidyaxError(ns["_errtext"](e), line, kind=_runtime_kind(e))
 
 
-def run_fast(source):
+def run_fast(source, base_dir=None):
     try:
-        run_fast_text(source)
+        run_fast_text(source, base_dir)
     except VidyaxError as e:
         print(e.show()); sys.exit(1)
 
@@ -1777,11 +1843,83 @@ def build_file(path):
     """Write a standalone <name>.py next to the .vx file."""
     with open(path, encoding="utf-8") as f:
         source = f.read()
-    py = compile_to_python(source, standalone=True)
+    py = compile_to_python(source, standalone=True,
+                           base_dir=os.path.dirname(os.path.abspath(path)))
     out = os.path.splitext(path)[0] + ".py"
     with open(out, "w", encoding="utf-8") as f:
         f.write(py)
     return out
+
+
+# =====================================================================
+# 6b. PACKAGE MANAGER  (vidyax install)
+# =====================================================================
+
+def _install_urls(spec):
+    """Turn an install spec into candidate download URLs.
+      user/repo         -> GitHub raw <repo>.vx (main, then master)
+      user/repo@ref     -> that ref
+      user/repo/path.vx -> that exact file in the repo
+      http(s)://...     -> used verbatim
+      file://... / path -> a local file (for offline use/testing)
+    Returns (module_name, [urls])."""
+    if spec.startswith(("http://", "https://", "file://")):
+        name = os.path.splitext(os.path.basename(spec.split("?")[0]))[0]
+        return name, [spec]
+    ref, ref_given = "main", False
+    if "@" in spec:
+        spec, ref = spec.rsplit("@", 1)
+        ref_given = True
+    parts = spec.split("/")
+    if len(parts) < 2:
+        raise VidyaxError("install needs 'user/repo' or a URL")
+    user, repo = parts[0], parts[1]
+    base = f"https://raw.githubusercontent.com/{user}/{repo}"
+    refs = [ref] if ref_given else ["main", "master"]
+    if len(parts) > 2:                      # explicit path inside the repo
+        sub = "/".join(parts[2:])
+        if not sub.endswith(".vx"):
+            sub += ".vx"
+        name = os.path.splitext(os.path.basename(sub))[0]
+        return name, [f"{base}/{r}/{sub}" for r in refs]
+    # bare user/repo: fetch <repo>.vx from the repo root, main then master
+    return repo, [f"{base}/{r}/{repo}.vx" for r in refs]
+
+
+def install_module(spec, dest=None):
+    """Download a single-file Vidyax module into vx_modules/. The file is
+    parsed before it's saved, so a broken download never lands on disk."""
+    import urllib.request
+    import urllib.error
+    name, urls = _install_urls(spec)
+    dest = dest or os.path.join(os.getcwd(), "vx_modules")
+    os.makedirs(dest, exist_ok=True)
+    last_err = None
+    for url in urls:
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "vidyax-install"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = r.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            last_err = f"HTTP {e.code} for {url}"
+            continue
+        except urllib.error.URLError as e:
+            last_err = f"cannot reach {url} ({e.reason})"
+            continue
+        except OSError as e:
+            last_err = str(e)
+            continue
+        try:
+            Parser(lex(data)).parse()          # validate before saving
+        except VidyaxError as e:
+            raise VidyaxError(f"downloaded module '{name}' has an error: "
+                              f"{e.msg}")
+        out = os.path.join(dest, name + ".vx")
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(data)
+        return name, out
+    raise VidyaxError(f"install failed for '{spec}': {last_err}")
 
 
 # =====================================================================
@@ -1795,7 +1933,7 @@ def run_file(path):
         sys.exit(1)
     with open(path, encoding="utf-8") as f:
         source = f.read()
-    run_fast(source)
+    run_fast(source, os.path.dirname(os.path.abspath(path)))
 
 
 def walk_file(path):
@@ -1806,9 +1944,11 @@ def walk_file(path):
     with open(path, encoding="utf-8") as f:
         source = f.read()
     try:
-        ast = _parse_source(source)
+        base_dir = os.path.dirname(os.path.abspath(path))
+        ast = _parse_source(source, base_dir)
         _typecheck(ast)
         Interpreter().run(ast)
+        RT["_finish_tasks"]()
     except VidyaxError as e:
         print(e.show())
         sys.exit(1)
@@ -1819,13 +1959,13 @@ def walk_file(path):
         sys.exit(1)
 
 
-def check_source(source):
+def check_source(source, base_dir=None):
     """Static check only: lex + parse + type_check, NO execution.
     Returns a list of {"line", "message"} dicts (empty if the code is clean).
     Used by editors for live error reporting."""
     errors = []
     try:
-        _typecheck(_parse_source(source))
+        _typecheck(_parse_source(source, base_dir))
     except VidyaxError as e:
         errors.append({"line": e.line if e.line is not None else 1,
                        "message": e.msg, "kind": e.kind})
@@ -1846,13 +1986,15 @@ def check_file(path):
     except Exception:
         print("[]")
         return
-    print(json.dumps(check_source(source)))
+    base_dir = (os.getcwd() if path == "-"
+                else os.path.dirname(os.path.abspath(path)))
+    print(json.dumps(check_source(source, base_dir)))
 
 
-def run_text(source):
+def run_text(source, base_dir=None):
     """Tree-walk a program. Raises VidyaxError on failure — the walker
     twin of run_fast_text, used by the REPL and the differential tests."""
-    ast = _parse_source(source)
+    ast = _parse_source(source, base_dir)
     _typecheck(ast)
     try:
         Interpreter().run(ast)
@@ -1957,6 +2099,7 @@ def main():
             "  vidyax walk <file.vx>      run with the tree-walker (debug)\n"
             "  vidyax check <file.vx|->    static check only, JSON errors (- = stdin)\n"
             "  vidyax lsp                 start the Language Server (stdio)\n"
+            "  vidyax install <user/repo> download a module into vx_modules/\n"
             "  vidyax test                run built-in tests (both engines)\n"
         )
         return
@@ -2045,7 +2188,20 @@ def main():
     elif cmd == "test":
         from tests import run_all_tests  # noqa
         run_all_tests()
-    elif cmd in ("fmt", "install"):
+    elif cmd == "install":
+        if len(args) < 2:
+            print("[Vidyax] usage: vidyax install <user/repo | url> ...")
+            sys.exit(1)
+        failed = False
+        for spec in args[1:]:
+            try:
+                name, out = install_module(spec)
+                print(f"[Vidyax] installed '{name}' -> {out}")
+            except VidyaxError as e:
+                print(e.show()); failed = True
+        if failed:
+            sys.exit(1)
+    elif cmd == "fmt":
         print(f"[Vidyax] command '{cmd}' is not supported yet (roadmap)")
     elif cmd.endswith((".vx", ".vax")) or os.path.exists(cmd):
         run_file(cmd)  # direct: vidyax main.vx

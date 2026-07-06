@@ -1116,18 +1116,21 @@ def disasm_file(path):
     return disassemble(data)
 
 
-def compile_source(source):
+def compile_source(source, base_dir=None):
+    import os
     tokens = vidyax.lex(source)
     ast = vidyax.Parser(tokens).parse()
+    vidyax.expand_uses(ast, base_dir or os.getcwd())   # resolve `use X`
     vidyax.type_check(ast)
     _inline_program(ast)     # VM-only optimization; semantics-preserving
     return Compiler().compile_program(ast)
 
 
 def compile_file(path, out_path=None):
+    import os
     with open(path, encoding="utf-8") as f:
         source = f.read()
-    c = compile_source(source)
+    c = compile_source(source, os.path.dirname(os.path.abspath(path)))
     if out_path is None:
         out_path = path.rsplit(".", 1)[0] + ".vxc"
     with open(out_path, "wb") as f:
