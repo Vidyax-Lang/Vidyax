@@ -6,7 +6,12 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 
 ## Prioritas berikutnya
 
-Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
+1. **Concurrency Fase B-D** — desain SUDAH ditulis & direview di
+   `docs/CONCURRENCY.md`: model `go f(x)` / `wait(t)` dengan satu interpreter
+   lock yang dilepas hanya di builtin I/O (model GIL — engine Python dapat
+   gratis, VM butuh refactor `VmCtx`). Fase A (builtin `sleep`/`now` di 4
+   engine) sudah masuk. Ada 3 pertanyaan terbuka di seksi 7 untuk pemilik
+   bahasa sebelum Fase B dikoding.
 
 ## Ide lain (belum diprioritaskan)
 
@@ -19,6 +24,9 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ### v1.3
 
+- Concurrency: dokumen desain (`docs/CONCURRENCY.md`) + Fase A — builtin
+  `sleep(secs)` & `now()` identik di KEEMPAT engine (walker, fast, VM,
+  native), lengkap dengan guard arity ala VM.
 - ~~Native backend~~ -> `vidyax native prog.vx -o prog` (vxnative.py): AOT
   .vx -> C -> binary standalone. Tiap proto jadi fungsi C (tanpa dispatch
   loop), di-link dengan runtime VM yang sama (value/gc/net/builtins) —

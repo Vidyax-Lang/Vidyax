@@ -117,6 +117,9 @@ CASES = [
      "variable 'q' is not defined\n5\n"),
     # list concat with +, like the VM's do_add
     ('print [1, 2] + [3]\n', "[1, 2, 3]\n"),
+    # stdlib: time (Phase A of the concurrency design, docs/CONCURRENCY.md)
+    ('t0: now()\nsleep(0.01)\nd: now() - t0\nprint d >= 0.01 and d < 10\n'
+     'print type(now())\n', "true\nnumber\n"),
     # stdlib: files (the VM needs --allow-fs; tests_vm.py passes it)
     ('writefile("/tmp/vx_selftest.txt", "abc")\nprint readfile("/tmp/vx_selftest.txt")\n', "abc\n"),
     ('print writefile("/tmp/vx_selftest.txt", 123)\nprint readfile("/tmp/vx_selftest.txt")\n', "null\n123\n"),
@@ -167,6 +170,8 @@ ERROR_CASES = [
     ('print range("a")\n', "range() takes 1 to 3 numbers"),
     ('push(5, 1)\n', "push() needs a list and a value"),
     ('print split("ab", "")\n', "empty separator"),
+    ('sleep(-1)\n', "sleep() needs a number of seconds >= 0"),
+    ('print now(1)\n', "now() takes no values"),
 ]
 
 # --- runtime errors must report the ORIGINAL .vx line (source map). Checked

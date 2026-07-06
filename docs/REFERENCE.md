@@ -235,6 +235,8 @@ age: ask "How old are you?"
 | `reverse(lst)`      | reverse the list in place |
 | `find(x, item)`     | first index of `item` in a list/text, `-1` if absent |
 | `slice(x, a, b)`    | copy of items `a..b-1` of a list/text (negatives count from the end) |
+| `sleep(secs)`       | pause for that many seconds |
+| `now()`             | current time in epoch seconds (for measuring durations) |
 
 The names above are *reserved* — they cannot be overwritten.
 

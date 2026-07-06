@@ -950,7 +950,7 @@ import keyword
 # Runtime helpers injected into every compiled program.
 RUNTIME = '''# --- Vidyax runtime (auto-generated) ---
 import os as _os, json as _json, urllib.request as _ureq, urllib.error as _uerr
-import math as _math, random as _random, functools as _ft
+import math as _math, random as _random, functools as _ft, time as _time
 
 class _VidyaxRuntime(Exception): pass
 
@@ -1350,6 +1350,17 @@ def _b_find(x, item):
         return x.find(_vstr(item))
     raise _VidyaxRuntime("find() needs a list or text")
 
+def _b_sleep(*a):
+    if len(a) != 1 or not isinstance(a[0], (bool, int, float)) or a[0] < 0:
+        raise _VidyaxRuntime("sleep() needs a number of seconds >= 0")
+    _time.sleep(float(a[0]))
+    return None
+
+def _b_now(*a):
+    if a:
+        raise _VidyaxRuntime("now() takes no values")
+    return _time.time()   # epoch seconds; for measuring durations
+
 def _b_slice(x, a, b):
     if not isinstance(x, (list, str)):
         raise _VidyaxRuntime("slice() needs a list or text")
@@ -1416,6 +1427,7 @@ BUILTINS = {
     "insert": _RT_NS["_b_insert"], "sort": _RT_NS["_b_sort"],
     "reverse": _RT_NS["_b_reverse"], "find": _RT_NS["_b_find"],
     "slice": _RT_NS["_b_slice"],
+    "sleep": _RT_NS["_b_sleep"], "now": _RT_NS["_b_now"],
 }
 BUILTIN_NAMES = set(BUILTINS)
 

@@ -441,6 +441,24 @@ static Value b_slice(int argc, Value *a) {
     return vlist_o(out);
 }
 
+static Value b_sleep(int argc, Value *a) {
+    if (argc != 1 || !numlike(a[0]) || as_num(a[0]) < 0)
+        vm_error("sleep() needs a number of seconds >= 0");
+    double s = as_num(a[0]);
+    struct timespec ts;
+    ts.tv_sec = (time_t)s;
+    ts.tv_nsec = (long)((s - (double)ts.tv_sec) * 1e9);
+    nanosleep(&ts, NULL);
+    return vnull();
+}
+static Value b_now(int argc, Value *a) {
+    (void)a;
+    if (argc != 0) vm_error("now() takes no values");
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return vnum((double)ts.tv_sec + (double)ts.tv_nsec / 1e9);
+}
+
 Builtin BUILTINS[] = {
     {"len", b_len}, {"range", b_range}, {"text", b_text}, {"num", b_num},
     {"upper", b_upper}, {"lower", b_lower}, {"split", b_split},
@@ -453,7 +471,7 @@ Builtin BUILTINS[] = {
     {"startswith", b_startswith}, {"endswith", b_endswith},
     {"pop", b_pop}, {"remove", b_remove}, {"insert", b_insert},
     {"sort", b_sort}, {"reverse", b_reverse}, {"find", b_find},
-    {"slice", b_slice},
+    {"slice", b_slice}, {"sleep", b_sleep}, {"now", b_now},
 };
 const size_t NBUILTINS = sizeof BUILTINS / sizeof BUILTINS[0];
 
