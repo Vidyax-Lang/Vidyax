@@ -10,7 +10,8 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ## Ide lain (belum diprioritaskan)
 
-- Optimizer lanjutan: IR/SSA formal.
+- SSA penuh di atas lapisan CFG (phi node, versi variabel) — baru berguna
+  saat native backend dikerjakan.
 - Native backend (sekarang baru VM bytecode).
 - Concurrency, package manager, LSP, debugger (target jangka panjang).
 
@@ -18,6 +19,11 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ### v1.3
 
+- ~~Optimizer: lapisan IR/CFG~~ -> `_cfg` di vxc.py: bytecode didecode jadi
+  basic block ber-edge eksplisit, lalu jump threading + eliminasi blok tak
+  terjangkau (ekor `NULL/RET` mati, rantai JMP), + cabang `if` berkondisi
+  konstan di-drop saat emit. Line table ikut diremap. Substrat untuk SSA /
+  native backend.
 - ~~Optimizer: escape analysis top-level~~ -> `<main>` kini slot-based seperti
   fungsi: nama top-level yang tidak dibaca fungsi manapun tinggal di stack
   slot (O(1)), bukan env global (linear scan). ~1,9x di loop panas dengan 60

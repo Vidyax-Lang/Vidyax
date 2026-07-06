@@ -524,7 +524,20 @@ class Compiler:
             self.expr(p, n.expr, ctx)
             self.emit(p, "PRINT")
         elif t == "If":
-            self.expr(p, n.cond, ctx)
+            # constant condition (a literal after folding): compile only
+            # the branch that runs — the other is provably dead. Python
+            # engines still evaluate normally; behavior is identical since
+            # a literal condition has no side effects.
+            cond = _fold(n.cond)
+            ct = type(cond).__name__
+            if ct in ("Bool", "Number", "Str", "Null"):
+                if ct == "Bool":     taken = bool(cond.v)
+                elif ct == "Number": taken = float(cond.v) != 0
+                elif ct == "Str":    taken = len(cond.v) != 0
+                else:                taken = False
+                self.block(p, n.body if taken else n.orelse, ctx)
+                return
+            self.expr(p, cond, ctx)
             jfalse = self.emit_jump(p, "JMP_IF_FALSE")
             self.block(p, n.body, ctx)
             if n.orelse:
@@ -794,9 +807,118 @@ class Compiler:
         p.lines = remapped
         p.code = new
 
+    # --- optimizer: CFG layer (basic blocks over VIR) ---
+    # The foundation the native backend will consume: decode the linear
+    # bytecode into basic blocks with explicit edges, optimize on that
+    # graph, then re-linearize. Passes today: jump threading (a jump to a
+    # bare-JMP block goes straight to the final target) and unreachable-
+    # block elimination (e.g. the fall-off-the-end NULL/RET after a
+    # function whose last statement is `return`).
+    def _cfg(self, p):
+        code = p.code
+        if not code:
+            return
+        J = (OPS["JMP"], OPS["JMP_IF_FALSE"], OPS["JIF_PEEK"],
+             OPS["JIT_PEEK"])
+        ENDERS = J + (OPS["RET"], OPS["HALT"])
+        TRY = OPS["TRY_PUSH"]
+
+        # decode + find leaders
+        instrs = []           # (offset, op, arg, total_size)
+        leaders = {0}
+        i = 0
+        while i < len(code):
+            op = code[i]
+            sz = _OPSIZE.get(op, 0)
+            arg = int.from_bytes(code[i + 1:i + 1 + sz], "little") if sz else None
+            instrs.append((i, op, arg, 1 + sz))
+            if op in J or op == TRY:
+                leaders.add(arg)
+            if op in ENDERS:
+                leaders.add(i + 1 + sz)
+            i += 1 + sz
+        leaders = sorted(x for x in leaders if x < len(code))
+
+        # blocks: leader offset -> list of instrs; block_end successor info
+        blocks = {}
+        cur = None
+        for ins in instrs:
+            if ins[0] in leaders or cur is None:
+                cur = []
+                blocks[ins[0]] = cur
+            cur.append(ins)
+        order = sorted(blocks)
+
+        # -- pass 1: jump threading --
+        def final_target(off, hops=0):
+            b = blocks.get(off)
+            if b and hops < 8 and b[0][1] == OPS["JMP"]:
+                return final_target(b[0][2], hops + 1)
+            return off
+
+        for b in blocks.values():
+            off, op, arg, sz = b[-1]
+            if op in J:
+                b[-1] = (off, op, final_target(arg), sz)
+            for k, ins in enumerate(b):
+                if ins[1] == TRY:
+                    b[k] = (ins[0], TRY, final_target(ins[2]), ins[3])
+
+        # -- pass 2: unreachable-block elimination --
+        reachable = set()
+        work = [0]
+        while work:
+            off = work.pop()
+            if off in reachable or off not in blocks:
+                continue
+            reachable.add(off)
+            b = blocks[off]
+            last_off, last_op, last_arg, last_sz = b[-1]
+            for ins in b:
+                if ins[1] == TRY:
+                    work.append(ins[2])
+            if last_op in J:
+                work.append(last_arg)
+            if last_op not in (OPS["JMP"], OPS["RET"], OPS["HALT"]):
+                work.append(last_off + last_sz)   # fallthrough
+
+        # -- re-emit reachable blocks in original order --
+        new = bytearray()
+        offmap = {}
+        for boff in order:
+            if boff not in reachable:
+                continue
+            for off, op, arg, sz in blocks[boff]:
+                offmap[off] = len(new)
+                new.append(op)
+                if sz > 1:
+                    new += int(arg).to_bytes(sz - 1, "little")
+        # patch jump/handler targets through the new layout
+        j = 0
+        while j < len(new):
+            op = new[j]
+            szo = _OPSIZE.get(op, 0)
+            if op in J or op == TRY:
+                t = int.from_bytes(new[j + 1:j + 5], "little")
+                new[j + 1:j + 5] = offmap[t].to_bytes(4, "little")
+            j += 1 + szo
+        # remap the line table (same rules as the peephole pass)
+        remapped = []
+        for off, line in p.lines:
+            while off not in offmap and off < len(code):
+                off += 1          # offset died with its block: next survivor
+            noff = offmap.get(off, len(new))
+            if remapped and remapped[-1][0] == noff:
+                remapped[-1] = (noff, line)
+            elif not remapped or remapped[-1][1] != line:
+                remapped.append((noff, line))
+        p.lines = remapped
+        p.code = new
+
     def serialize(self):
         for p in self.protos:
             self._peephole(p)
+            self._cfg(p)
         # Intern every name FIRST — proto names / params may never appear
         # in code, and adding consts after the count is written corrupts
         # the file.

@@ -324,6 +324,15 @@ def run_all_tests():
                  "PRINT", "HALT"]:
         if want not in listing_vx:
             problems.append(f"listing missing {want!r}")
+    # CFG layer: dead branches and unreachable tails must be gone
+    cfg_src = ('func one():\n    return 1\n'
+               'if false:\n    print "mati"\nprint "hidup"\n')
+    listing = vxc.disassemble(vxc.compile_source(cfg_src).serialize())
+    if '"mati"' in listing:
+        problems.append("constant-false branch survived in the bytecode")
+    one = listing.split("proto 1")[1]
+    if one.count("RET") != 1:
+        problems.append("dead fall-off NULL/RET tail survived after return")
     if problems:
         failed += 1
         print("  FAIL disasm-test 1: " + " | ".join(problems))

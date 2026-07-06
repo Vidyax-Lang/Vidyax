@@ -181,7 +181,7 @@ completion under `--max-mem 4000000` — 50 collections, peak ~1 MB.
 |---|----------|--------|
 | 1 | Core language on the C VM, VIR verification, sandbox limits, differential tests | **done** — 40/40 supported cases identical to both Python engines |
 | 2 | Mark-sweep GC + gc-stress + ASan verification | **done** |
-| 3 | Optimizing compiler: constant folding, slot-based locals, dead-code elimination, peephole, **function inlining** (single-`return` bodies, pure args; conservative rules preserve error text, argument evaluation order, and definedness checks — see `_inline_program` in vxc.py) | **done** |
+| 3 | Optimizing compiler: constant folding, slot-based locals (functions **and** top level), dead-code elimination, peephole, **function inlining** (single-`return` bodies, pure args; conservative rules preserve error text, argument evaluation order, and definedness checks — see `_inline_program`), and a **CFG layer** (`_cfg` in vxc.py): bytecode is decoded into basic blocks with explicit edges, then jump-threaded and stripped of unreachable blocks (constant `if` branches are dropped at emit time). The CFG is the substrate a future SSA pass / native backend will consume. | **done** |
 | 4 | `get`/`ai` via libcurl + `--allow-net` permission flag | **done** |
 | 5 | Orchestrator / automatic multi-engine dispatch | vision |
 
