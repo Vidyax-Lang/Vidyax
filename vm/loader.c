@@ -31,7 +31,7 @@ void load(const char *path) {
         fprintf(stderr, "[Vidyax] not a .vxc file: %s\n", path); exit(1);
     }
     fpos = 4;
-    if (r_u8() != 2) {
+    if (r_u8() != 3) {
         fprintf(stderr, "[Vidyax] unsupported .vxc version "
                 "(recompile with: vidyax bytecode <file.vx>)\n");
         exit(1);
@@ -74,7 +74,25 @@ void load(const char *path) {
         for (int j = 0; j < p->ndecl; j++) p->decl[j] = const_str(r_u32());
         p->codelen = r_u32(); need(p->codelen);
         p->code = fdata + fpos; fpos += p->codelen;
+        p->nlines = r_u32();
+        p->line_off = xmalloc(sizeof(uint32_t) * (p->nlines ? p->nlines : 1));
+        p->line_no  = xmalloc(sizeof(uint32_t) * (p->nlines ? p->nlines : 1));
+        for (uint32_t j = 0; j < p->nlines; j++) {
+            p->line_off[j] = r_u32();
+            p->line_no[j]  = r_u32();
+            if (j > 0 && p->line_off[j] < p->line_off[j - 1]) {
+                fprintf(stderr, "[Vidyax] corrupt .vxc file\n"); exit(1);
+            }
+        }
     }
+}
+
+/* .vx line for a code offset: last run starting at or before ip (0 = unknown) */
+uint32_t line_for(const Proto *p, uint32_t ip) {
+    uint32_t line = 0;
+    for (uint32_t j = 0; j < p->nlines && p->line_off[j] <= ip; j++)
+        line = p->line_no[j];
+    return line;
 }
 
 /* ---- bytecode verifier (blueprint Bab 4) ----

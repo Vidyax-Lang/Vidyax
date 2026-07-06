@@ -68,13 +68,17 @@ to the frame it leaves.
 
 ## 3. VIR — the bytecode format (new)
 
-A `.vxc` file, little-endian. **Format version 2** (v1 files must be
-recompiled): each proto now carries its slot layout —
+A `.vxc` file, little-endian. **Format version 3** (older files must be
+recompiled): v2 added each proto's slot layout —
 `u16 nslots + name idx each` (first nparams mirror the params) and
-`u8 n_escaping_params + u8 param index each`. Two opcodes were added:
-`LOAD_SLOT`/`STORE_SLOT` (u16 slot index) for direct stack access;
-reading an unassigned slot raises the same read-before-assign error as
-the Python engines, via an internal UNSET marker.
+`u8 n_escaping_params + u8 param index each` — plus the
+`LOAD_SLOT`/`STORE_SLOT` opcodes (u16 slot index) for direct stack
+access; reading an unassigned slot raises the same read-before-assign
+error as the Python engines, via an internal UNSET marker.
+**v3 appends a line table per proto**: `u32 nruns`, then sorted
+`(u32 code offset, u32 .vx line)` pairs; a run covers the code until the
+next run's offset. It powers the debugger and `vidyax disasm`'s
+`; line N` markers.
 
 ```
 "VXC1"  magic
@@ -116,6 +120,13 @@ vxvm --max-instr 50000000 --max-mem 268435456 --max-time 5 prog.vxc
   default, raising a catchable error unless the flag is passed:
   HTTP (`get()`, `ai.ask`) behind **`--allow-net`**, and file access
   (`readfile()`, `writefile()`) behind **`--allow-fs`**.
+- **Debugger** — `vxvm --debug prog.vxc` (or `vidyax debug prog.vx`):
+  an interactive line debugger in `vm/debug.c`, driven by the v3 line
+  table. Pauses on the first line; `b N`/`d N` breakpoints, `c`
+  continue, `s` step into, `n` step over, `bt` backtrace, `locals`
+  (slots + own-scope env, hidden `$` names filtered), `stack` operand
+  stack, `q` quit. Prompt and output go to **stderr** so the program's
+  stdout stays clean.
 - **Disassembler** — `vidyax disasm <file.vxc|file.vx>` prints a full
   listing (constant pool, per-proto slot layout, decoded instructions
   with resolved names and jump targets). `vxc.disassemble()` is the

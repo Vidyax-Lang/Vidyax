@@ -4,16 +4,20 @@
 Reuses vidyax.py's lexer/parser/type-checker/scope analysis, so the VM
 inherits the exact same front-end semantics as the two Python engines.
 
-Format .vxc (little-endian):
+Format .vxc (little-endian), version 3:
   magic  "VXC1"
-  u8     version (=1)
+  u8     version (=3)
   u32    nconsts, then consts:
            tag u8: 1 = NUM (f64), 2 = STR (u32 len + utf-8 bytes)
   u32    nprotos, then protos (proto 0 = top level):
            u32 name const idx (str)
            u8  nparams, then u32 const idx per param name
+           u16 nslots, then u32 const idx per slot name
+           u8  n escaping params, then u8 param index each
            u16 ndeclared, then u32 const idx per declared-local name
            u32 codelen, then code bytes
+           u32 nlineruns, then (u32 code offset, u32 .vx line) each —
+               sorted; a run covers code until the next run's offset
 
 Opcodes: see OPS below (mirrored in vm/vxvm.c — keep in sync!).
 `use ai`, member access and get() are supported: the VM ships the same ai
@@ -219,6 +223,12 @@ class Proto:
         self.esc_param_ix = []   # param indexes whose value must be copied
                                  # into the heap env at call entry
         self.code = bytearray()
+        self.lines = []          # (code offset, .vx line) runs, sorted
+
+    def mark_line(self, line):
+        """Record that code emitted from here on comes from .vx `line`."""
+        if line and (not self.lines or self.lines[-1][1] != line):
+            self.lines.append((len(self.code), line))
 
 
 class Compiler:
@@ -304,6 +314,7 @@ class Compiler:
     # --- statements ---
     def stmt(self, p, n, ctx):
         t = type(n).__name__
+        p.mark_line(getattr(n, "line", 0))
         if t == "Assign":
             self.expr(p, n.value, ctx)
             self.name_store(p, n.name)
@@ -571,6 +582,17 @@ class Compiler:
                 (t,) = struct.unpack_from("<I", new, j + 1)
                 struct.pack_into("<I", new, j + 1, offset_map.get(t, t))
             j += 1 + sz
+        # remap the line table through the same offset map (dedupe runs
+        # that collapsed onto the same new offset: last one wins there,
+        # then drop consecutive duplicates of the same line)
+        remapped = []
+        for off, line in p.lines:
+            noff = offset_map.get(off, len(new))
+            if remapped and remapped[-1][0] == noff:
+                remapped[-1] = (noff, line)
+            elif not remapped or remapped[-1][1] != line:
+                remapped.append((noff, line))
+        p.lines = remapped
         p.code = new
 
     def serialize(self):
@@ -588,7 +610,7 @@ class Compiler:
             for name in p.slots:
                 self.cstr(name)
         out = bytearray(b"VXC1")
-        out.append(2)  # version 2: protos carry slot layout
+        out.append(3)  # version 3: v2 (slot layout) + per-proto line table
         out += struct.pack("<I", len(self.consts))
         for kind, v in self.consts:
             if kind == "num":
@@ -615,6 +637,9 @@ class Compiler:
                 out += struct.pack("<I", self.cstr(name))
             out += struct.pack("<I", len(p.code))
             out += p.code
+            out += struct.pack("<I", len(p.lines))
+            for off, line in p.lines:
+                out += struct.pack("<II", off, line)
         return bytes(out)
 
 
@@ -684,7 +709,11 @@ def disassemble(data):
         declared = [cstr(u32()) for _ in range(u16())]
         codelen = u32(); need(codelen)
         code = data[pos[0]:pos[0] + codelen]; pos[0] += codelen
-        protos.append((name, params, slots, esc, declared, code))
+        lines = {}
+        if version >= 3:
+            for _ in range(u32()):
+                off = u32(); lines[off] = u32()
+        protos.append((name, params, slots, esc, declared, code, lines))
 
     lines = ["; Vidyax bytecode VXC1 v%d — %d consts, %d protos"
              % (version, len(consts), len(protos))]
@@ -693,7 +722,7 @@ def disassemble(data):
         for i in range(len(consts)):
             lines.append("  [%d] %s" % (i, crepr(i)))
 
-    for pi, (name, params, slots, esc, declared, code) in enumerate(protos):
+    for pi, (name, params, slots, esc, declared, code, lnruns) in enumerate(protos):
         head = "proto %d <%s>  params=(%s)" % (pi, name, ", ".join(params))
         if slots:
             head += "  slots=(%s)" % ", ".join(slots)
@@ -705,6 +734,8 @@ def disassemble(data):
         lines.append(head)
         i = 0
         while i < len(code):
+            if i in lnruns:
+                lines.append("  ; line %d" % lnruns[i])
             op = code[i]
             nm = _OPNAME.get(op)
             if nm is None:

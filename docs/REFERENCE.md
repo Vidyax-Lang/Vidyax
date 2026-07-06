@@ -286,6 +286,7 @@ the required environment variable.
 | `vidyax build <file.vx>` | translate to a standalone Python `.py` file |
 | `vidyax bytecode <file.vx>` | compile to VVM bytecode `.vxc` |
 | `vidyax disasm <file.vxc>` | disassemble VVM bytecode (also accepts a `.vx`) |
+| `vidyax debug <file.vx>`  | run under the VVM line debugger (`b`/`c`/`s`/`n`/`bt`/`locals`) |
 | `vidyax check <file.vx>` | static check only, output errors as JSON (`-` = stdin) |
 | `vidyax test`            | run the built-in tests (both engines) |
 | `vidyax <file.vx>`       | same as `run` |

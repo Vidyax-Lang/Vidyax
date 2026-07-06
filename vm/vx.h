@@ -70,6 +70,9 @@ typedef struct Proto {
     uint8_t *escp;       /* their param indexes */
     uint32_t codelen;
     uint8_t *code;
+    uint32_t  nlines;    /* line table: sorted (code offset, .vx line) runs */
+    uint32_t *line_off;
+    uint32_t *line_no;
 } Proto;
 
 typedef struct Env Env;
@@ -193,5 +196,10 @@ extern const size_t NBUILTINS;
 /* ---- loader.c ---- */
 void load(const char *path);
 void verify(void);
+uint32_t line_for(const Proto *p, uint32_t ip);
+
+/* ---- debug.c (--debug) ---- */
+extern int vx_debug;
+void debug_hook(void);
 
 #endif /* VX_H */

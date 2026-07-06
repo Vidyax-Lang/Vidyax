@@ -84,6 +84,7 @@ static void run(void) {
         if (max_secs && (instr_count & 4095) == 0 &&
             (double)(clock() - start_clock) / CLOCKS_PER_SEC > max_secs)
             vm_error("VM PANIC: time limit exceeded (%.1fs)", max_secs);
+        if (vx_debug) debug_hook();
         Frame *fr = &frames[nframes - 1];
         uint8_t *code = fr->proto->code;
         uint8_t op = code[fr->ip++];
@@ -339,6 +340,8 @@ int main(int argc, char **argv) {
             allow_net = 1;   /* opt in to network for get() / ai.ask */
         else if (strcmp(argv[i], "--allow-fs") == 0)
             allow_fs = 1;    /* opt in to files for readfile() / writefile() */
+        else if (strcmp(argv[i], "--debug") == 0)
+            vx_debug = 1;    /* interactive line debugger (see debug.c) */
         else if (strcmp(argv[i], "--gc-stress") == 0)
             gc_stress = 1;   /* collect at EVERY safepoint (testing) */
         else if (strcmp(argv[i], "--gc-stats") == 0)

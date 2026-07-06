@@ -18,6 +18,11 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ### v1.3
 
+- ~~Debugger~~ -> `vidyax debug file.vx` / `vxvm --debug` (modul `vm/debug.c`):
+  breakpoint per baris .vx (`b`/`d`), `c`/`s` (step into)/`n` (step over),
+  `bt` backtrace, `locals` (tanpa nama internal `$`), `stack`. Ditenagai
+  format .vxc v3: line table per proto (offset -> baris .vx), ikut diremap
+  peephole; `vidyax disasm` kini menampilkan marker `; line N`.
 - ~~Pecah vxvm.c jadi modular~~ -> `vm/` kini 6 modul + 1 header:
   `vx.h` (tipe + API bersama), `value.c` (konstruktor, env, format angka,
   semantik eq/cmp/add/index), `gc.c` (alokasi + mark-sweep), `net.c`

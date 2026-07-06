@@ -328,8 +328,38 @@ def run_all_tests():
         passed += 1
         print("  PASS disasm-test 1")
 
+    # debugger smoke test: breakpoint inside a function, inspect, continue
+    vm_bin = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "vm", "vxvm")
+    if os.path.exists(vm_bin):
+        with tempfile.TemporaryDirectory() as td:
+            dvx = os.path.join(td, "dbg.vx")
+            with open(dvx, "w") as f:
+                f.write('func sq(n):\n    return n * n\nprint sq(7)\n')
+            dpath = vxc.compile_file(dvx)
+            r = subprocess.run([vm_bin, "--debug", dpath],
+                               input="b 2\nc\nlocals\nbt\nc\n",
+                               capture_output=True, text=True, timeout=30)
+        dbg = r.stderr
+        problems = []
+        for want in ["[vxdbg] line 1 in <main>", "[vxdbg] line 2 in sq",
+                     "n = 7", "#1 <main> (line 3)"]:
+            if want not in dbg:
+                problems.append(f"debugger output missing {want!r}")
+        if r.stdout.strip() != "49":
+            problems.append(f"program output {r.stdout!r}, want '49'")
+        if problems:
+            failed += 1
+            print("  FAIL debug-test 1: " + " | ".join(problems))
+        else:
+            passed += 1
+            print("  PASS debug-test 1")
+    else:
+        print("  SKIP debug-test 1 (vxvm not built)")
+        passed += 1
+
     total = (len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
-             + len(CATEGORY_CASES) + len(REPL_CASES) + 1)
+             + len(CATEGORY_CASES) + len(REPL_CASES) + 2)
     print(f"\n{passed}/{total} tests passed (each on BOTH engines)")
     if failed:
         raise SystemExit(1)

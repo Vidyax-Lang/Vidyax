@@ -344,6 +344,15 @@ class Parser:
         return body
 
     def statement(self):
+        # Stamp every statement node with its first token's line — the
+        # bytecode compiler's line table (and the walker) rely on it.
+        line = self.peek().line
+        node = self._statement()
+        if getattr(node, "line", None) is None:
+            node.line = line
+        return node
+
+    def _statement(self):
         t = self.peek()
         if t.kind == "KEYWORD":
             if t.value == "print":    return self.stmt_print()
@@ -1839,6 +1848,7 @@ def main():
             "  vidyax build <file.vx>     compile to a standalone <file>.py\n"
             "  vidyax bytecode <file.vx>  compile to VVM bytecode <file>.vxc\n"
             "  vidyax disasm <file.vxc>   disassemble VVM bytecode (or a .vx)\n"
+            "  vidyax debug <file.vx>     run under the VVM line debugger\n"
             "  vidyax walk <file.vx>      run with the tree-walker (debug)\n"
             "  vidyax check <file.vx|->    static check only, JSON errors (- = stdin)\n"
             "  vidyax test                run built-in tests (both engines)\n"
@@ -1873,6 +1883,29 @@ def main():
         if len(args) < 2:
             print("[Vidyax] usage: vidyax check <file.vx | ->"); sys.exit(1)
         check_file(args[1])
+    elif cmd == "debug":
+        if len(args) < 2:
+            print("[Vidyax] usage: vidyax debug <file.vx> [vxvm flags]")
+            sys.exit(1)
+        vm_bin = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "vm", "vxvm")
+        if not os.path.exists(vm_bin):
+            print("[Vidyax] vxvm is not built yet — run: make -C vm")
+            sys.exit(1)
+        try:
+            import subprocess
+            import tempfile
+            import vxc  # noqa
+            c = vxc.compile_source(open(args[1], encoding="utf-8").read())
+            with tempfile.NamedTemporaryFile(suffix=".vxc") as f:
+                f.write(c.serialize()); f.flush()
+                # extra flags (e.g. --allow-net) pass straight to vxvm
+                r = subprocess.run([vm_bin, "--debug", *args[2:], f.name])
+            sys.exit(r.returncode)
+        except VidyaxError as e:
+            print(e.show()); sys.exit(1)
+        except OSError as e:
+            print(f"[Vidyax] cannot read {args[1]}: {e.strerror}"); sys.exit(1)
     elif cmd == "disasm":
         if len(args) < 2:
             print("[Vidyax] usage: vidyax disasm <file.vxc|file.vx>"); sys.exit(1)
