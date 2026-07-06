@@ -6,12 +6,9 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 
 ## Prioritas berikutnya
 
-1. **Concurrency Fase B-D** — desain SUDAH ditulis & direview di
-   `docs/CONCURRENCY.md`: model `go f(x)` / `wait(t)` dengan satu interpreter
-   lock yang dilepas hanya di builtin I/O (model GIL — engine Python dapat
-   gratis, VM butuh refactor `VmCtx`). Fase A (builtin `sleep`/`now` di 4
-   engine) sudah masuk. Ada 3 pertanyaan terbuka di seksi 7 untuk pemilik
-   bahasa sebelum Fase B dikoding.
+1. **Concurrency Fase C-D** — `go`/`wait` SUDAH hidup di walker + fast
+   (Fase B). Berikutnya: refactor `VmCtx` di VVM (Fase C) lalu native (D).
+   Desain: `docs/CONCURRENCY.md`.
 
 ## Ide lain (belum diprioritaskan)
 
@@ -24,9 +21,14 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 
 ### v1.3
 
-- Concurrency: dokumen desain (`docs/CONCURRENCY.md`) + Fase A — builtin
-  `sleep(secs)` & `now()` identik di KEEMPAT engine (walker, fast, VM,
-  native), lengkap dengan guard arity ala VM.
+- Concurrency Fase B: `t: go f(x)` / `wait(t)` hidup di walker + fast —
+  task paralel dengan model GIL (interleave hanya saat I/O; data race
+  mustahil). Error task muncul ulang di wait (catchable); task gagal tanpa
+  wait dilaporkan di akhir program. `contoh/paralel.vx`: 2 ai.ask live
+  paralel 0,95 dtk total. VM/native menolak `go` dengan pesan Fase C yang
+  jelas. 7 test go/wait baru (subset deterministik).
+- Concurrency Fase A: dokumen desain (`docs/CONCURRENCY.md`) + builtin
+  `sleep(secs)` & `now()` identik di KEEMPAT engine, guard arity ala VM.
 - ~~Native backend~~ -> `vidyax native prog.vx -o prog` (vxnative.py): AOT
   .vx -> C -> binary standalone. Tiap proto jadi fungsi C (tanpa dispatch
   loop), di-link dengan runtime VM yang sama (value/gc/net/builtins) —

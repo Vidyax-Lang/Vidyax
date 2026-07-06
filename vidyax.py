@@ -269,6 +269,9 @@ class Member(Node):
     def __init__(self, obj, name, line): self.obj = obj; self.name = name; self.line = line
 class Index(Node):
     def __init__(self, obj, idx, line): self.obj = obj; self.idx = idx; self.line = line
+class GoTask(Node):
+    """`go f(args)` — run the call as a concurrent task (docs/CONCURRENCY.md)."""
+    def __init__(self, call, line): self.call = call; self.line = line
 
 
 # =====================================================================
@@ -371,8 +374,8 @@ class Parser:
                 if self.loop_depth == 0:
                     raise VidyaxError("'continue' only works inside a loop", t.line)
                 self.eat(); self.eat("NEWLINE"); return Continue()
-            if t.value in ("agent", "go"):
-                raise VidyaxError(f"'{t.value}' is not supported yet (roadmap)", t.line)
+            if t.value == "agent":
+                raise VidyaxError("'agent' is not supported yet (roadmap)", t.line)
         # assignment: NAME ':' expr
         if t.kind == "NAME" and self.peek(1).kind == "OP" and self.peek(1).value == ":":
             name = self.guard_name(self.eat("NAME"))
@@ -521,6 +524,13 @@ class Parser:
             t = self.eat(); return UnaryOp("not", self.p_unary(), t.line)
         if self.at("OP", "-"):
             t = self.eat(); return UnaryOp("-", self.p_unary(), t.line)
+        if self.at("KEYWORD", "go"):
+            t = self.eat()
+            call = self.p_postfix()
+            if type(call).__name__ != "Call":
+                raise VidyaxError(
+                    "'go' needs a function call, like: go f(x)", t.line)
+            return GoTask(call, t.line)
         return self.p_postfix()
 
     def starts_command_arg(self):
@@ -843,6 +853,25 @@ class Interpreter:
         idx = self.eval(n.idx, env)
         return _rt(RT["_index"], n.line, obj, idx)
 
+    def eval_GoTask(self, n, env):
+        call = n.call
+        callee = self.eval(call.callee, env)
+        args = [self.eval(a, env) for a in call.args]   # eager, caller-side
+        cname = (call.callee.name
+                 if type(call.callee).__name__ == "Var" else "task")
+        if isinstance(callee, Function):
+            def thunk():
+                try:
+                    return self.call_function(callee, args, call.line)
+                except VidyaxError as e:
+                    raise RTError(e.msg)
+        elif callable(callee):
+            def thunk():
+                return callee(*args)
+        else:
+            raise VidyaxError("this is not a function", n.line, kind="runtime")
+        return RT["_VTask"](cname, thunk)
+
     def eval_Call(self, n, env):
         callee = self.eval(n.callee, env)
         args = [self.eval(a, env) for a in n.args]
@@ -951,6 +980,7 @@ import keyword
 RUNTIME = '''# --- Vidyax runtime (auto-generated) ---
 import os as _os, json as _json, urllib.request as _ureq, urllib.error as _uerr
 import math as _math, random as _random, functools as _ft, time as _time
+import threading as _thr
 
 class _VidyaxRuntime(Exception): pass
 
@@ -960,6 +990,7 @@ def _vstr(v):
     if v is None: return "null"
     if isinstance(v, float): return str(int(v)) if v.is_integer() else str(v)
     if isinstance(v, list): return "[" + ", ".join(_vstr(x) for x in v) + "]"
+    if type(v).__name__ == "_VTask": return "<task %s>" % v.name
     return str(v)
 
 def _add(a, b):
@@ -1190,6 +1221,7 @@ def _b_type(x):
     if isinstance(x, str): return "text"
     if isinstance(x, list): return "list"
     if x is None: return "null"
+    if type(x).__name__ == "_VTask": return "task"
     return "object"
 
 def _b_get(url):
@@ -1350,6 +1382,50 @@ def _b_find(x, item):
         return x.find(_vstr(item))
     raise _VidyaxRuntime("find() needs a list or text")
 
+# --- tasks (`go` / wait) — docs/CONCURRENCY.md; Python's GIL IS the
+# execution model: one interpreter lock, released inside blocking I/O ---
+_ALL_TASKS = []
+
+class _VTask:
+    def __init__(self, name, thunk):
+        self.name = name
+        self.result = None
+        self.err = None
+        self.waited = False
+        _ALL_TASKS.append(self)
+        self._t = _thr.Thread(target=self._run, args=(thunk,))
+        self._t.start()
+
+    def _run(self, thunk):
+        try:
+            self.result = thunk()
+        except _VidyaxRuntime as e:
+            self.err = str(e)
+        except Exception as e:   # noqa: never leak a raw traceback
+            self.err = _errtext(e)
+
+def _go(name, f, *args):
+    return _VTask(name, lambda: _call(f, *args))
+
+def _b_wait(*a):
+    if len(a) != 1 or not isinstance(a[0], _VTask):
+        raise _VidyaxRuntime("wait() needs a task (made with 'go')")
+    t = a[0]
+    t.waited = True
+    t._t.join()
+    if t.err is not None:
+        raise _VidyaxRuntime(t.err)
+    return t.result
+
+def _finish_tasks():
+    # Program end: nothing is silently lost — join every task, and a
+    # failed task nobody waited for is reported like any uncaught error.
+    while _ALL_TASKS:
+        t = _ALL_TASKS.pop()
+        t._t.join()
+        if t.err is not None and not t.waited:
+            raise _VidyaxRuntime("task '%s' failed: %s" % (t.name, t.err))
+
 def _b_sleep(*a):
     if len(a) != 1 or not isinstance(a[0], (bool, int, float)) or a[0] < 0:
         raise _VidyaxRuntime("sleep() needs a number of seconds >= 0")
@@ -1428,6 +1504,7 @@ BUILTINS = {
     "reverse": _RT_NS["_b_reverse"], "find": _RT_NS["_b_find"],
     "slice": _RT_NS["_b_slice"],
     "sleep": _RT_NS["_b_sleep"], "now": _RT_NS["_b_now"],
+    "wait": _RT_NS["_b_wait"],
 }
 BUILTIN_NAMES = set(BUILTINS)
 
@@ -1590,6 +1667,18 @@ class Transpiler:
                 return f"_b_{callee.name}({args})"
             joined = (", " + args) if args else ""
             return f"_call({self.expr(callee)}{joined})"
+        if t == "GoTask":
+            call = n.call
+            args = ", ".join(self.expr(a) for a in call.args)
+            callee = call.callee
+            if type(callee).__name__ == "Var" and callee.name in BUILTIN_NAMES:
+                fn, cname = f"_b_{callee.name}", callee.name
+            else:
+                fn = self.expr(callee)
+                cname = (callee.name
+                         if type(callee).__name__ == "Var" else "task")
+            joined = (", " + args) if args else ""
+            return f"_go({cname!r}, {fn}{joined})"
         if t == "Member":
             return f"_member({self.expr(n.obj)}, {n.name!r})"
         if t == "Index":
@@ -1663,6 +1752,7 @@ def run_fast_text(source):
     exec(compile(py, "<vidyax>", "exec"), ns)
     try:
         ns["_main"]()
+        ns["_finish_tasks"]()   # join tasks; surface unwaited failures
     except VidyaxError:
         raise
     except Exception as e:
@@ -1766,6 +1856,7 @@ def run_text(source):
     _typecheck(ast)
     try:
         Interpreter().run(ast)
+        RT["_finish_tasks"]()   # join tasks; surface unwaited failures
     except VidyaxError:
         raise
     except Exception as e:

@@ -212,6 +212,32 @@ REPL_CASES = [
 ]
 
 
+# --- tasks (go/wait): Python engines only until Phase C brings the VM in.
+# Deterministic subset: results forced into a fixed order via wait/sort.
+# (src, exact_stdout, error_substring_or_None) ---
+GO_CASES = [
+    ('func f(x):\n    return x * 2\nt: go f(21)\nprint wait(t)\n',
+     "42\n", None),
+    ('t: go upper("hai")\nprint wait(t)\nprint type(t)\nprint t\n',
+     "HAI\ntask\n<task upper>\n", None),
+    # two overlapping tasks; order-free assertion via sort()
+    ('xs: []\nfunc w(n):\n    sleep(0.01)\n    push(xs, n)\n    return n\n'
+     't1: go w(2)\nt2: go w(1)\nwait(t1)\nwait(t2)\nsort(xs)\nprint xs\n',
+     "[1, 2]\n", None),
+    # a task error re-raises at the wait() site and is catchable there
+    ('func g():\n    return 1 / 0\nt: go g()\n'
+     'try:\n    print wait(t)\ncatch e:\n    print "err: " + e\n',
+     "err: cannot divide by 0\n", None),
+    # waiting twice is fine and returns the same result
+    ('func f():\n    return 7\nt: go f()\nprint wait(t) + wait(t)\n',
+     "14\n", None),
+    # a FAILED task nobody waited for is reported at program end
+    ('func g():\n    return pop([])\nt: go g()\nprint "jalan"\n',
+     "jalan\n", "task 'g' failed: pop() on an empty list"),
+    ('print wait(5)\n', "", "wait() needs a task"),
+]
+
+
 def run_all_tests():
     passed = failed = 0
 
@@ -404,6 +430,26 @@ def run_all_tests():
         print("  SKIP profile-test 1 (vxvm not built)")
         passed += 1
 
+    base5 = base3 + len(CATEGORY_CASES)
+    for i, (src, want, want_err) in enumerate(GO_CASES, 1):
+        problems = []
+        results = {name: run_engine(fn, src) for name, fn in ENGINES}
+        for name, (out, err) in results.items():
+            if out != want:
+                problems.append(f"{name} got {out!r}, want {want!r}")
+            if want_err is None and err is not None:
+                problems.append(f"{name} errored: {err!r}")
+            if want_err is not None and (err is None or want_err not in err):
+                problems.append(f"{name} error {err!r} missing {want_err!r}")
+        if results["walk"] != results["fast"]:
+            problems.append("ENGINES DISAGREE")
+        if problems:
+            failed += 1
+            print(f"  FAIL go-test {i} (#{base5 + i}): " + " | ".join(problems))
+        else:
+            passed += 1
+            print(f"  PASS go-test {i} (#{base5 + i})")
+
     # native backend smoke test: compile to a binary, outputs must match
     import shutil as _sh
     if _sh.which(os.environ.get("CC", "cc")):
@@ -500,7 +546,7 @@ def run_all_tests():
         print("  PASS lsp-test 1")
 
     total = (len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
-             + len(CATEGORY_CASES) + len(REPL_CASES) + 5)
+             + len(CATEGORY_CASES) + len(REPL_CASES) + len(GO_CASES) + 5)
     print(f"\n{passed}/{total} tests passed (each on BOTH engines)")
     if failed:
         raise SystemExit(1)

@@ -237,6 +237,25 @@ age: ask "How old are you?"
 | `slice(x, a, b)`    | copy of items `a..b-1` of a list/text (negatives count from the end) |
 | `sleep(secs)`       | pause for that many seconds |
 | `now()`             | current time in epoch seconds (for measuring durations) |
+| `wait(t)`           | result of a task made with `go` (re-raises its error here) |
+
+### Tasks (`go` / `wait`)
+
+```vidyax
+t1: go ai.ask "jelaskan gravitasi"     # starts a task, returns immediately
+t2: go get("https://example.com")      # runs concurrently with t1
+print wait(t1)                         # blocks until t1 finishes
+print wait(t2)
+```
+
+`go f(args)` runs a call as a concurrent **task** (a value of type
+`"task"`). Arguments are evaluated eagerly in the caller. Tasks
+interleave **only while waiting on I/O** (`get`, `ai.ask`, files,
+`sleep`) — pure computation never interleaves, so data races are
+impossible. An error inside a task re-raises at its `wait(t)` (catchable
+with try/catch); a failed task nobody waited for is reported when the
+program ends. Design + roadmap: `docs/CONCURRENCY.md`. Currently on the
+default engine and the walker; VM/native support is Phase C.
 
 The names above are *reserved* — they cannot be overwritten.
 

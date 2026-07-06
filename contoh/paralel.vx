@@ -1,0 +1,13 @@
+# Dua pertanyaan AI berjalan BERSAMAAN dengan go/wait.
+# Jalankan (butuh GROQ_API_KEY): vidyax contoh/paralel.vx
+
+use ai
+ai.system "Jawab dalam satu kalimat bahasa Indonesia."
+
+t0: now()
+t1: go ai.ask "Apa itu gravitasi?"
+t2: go ai.ask "Apa itu fotosintesis?"
+
+print "1: " + wait(t1)
+print "2: " + wait(t2)
+print "selesai dalam " + round(now() - t0, 2) + " detik (paralel!)"

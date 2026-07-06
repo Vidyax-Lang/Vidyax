@@ -53,6 +53,8 @@ def _refs_in(stmts):
             ex(e.callee)
             for a in e.args:
                 ex(a)
+        elif t == "GoTask":
+            ex(e.call)
         elif t == "Index":
             ex(e.obj); ex(e.idx)
         elif t == "Member":
@@ -253,6 +255,8 @@ def _collect_candidates(ast):
                 scan_expr(e.idx)
         elif t == "Input":
             scan_expr(e.prompt)
+        elif t == "GoTask":
+            scan_expr(e.call)
 
     def scan_stmts(stmts):
         for s in stmts:
@@ -313,6 +317,10 @@ def _inline_program(ast):
             e.obj = rw(e.obj); e.idx = rw(e.idx)
         elif t == "Input":
             e.prompt = rw(e.prompt)
+        elif t == "GoTask":
+            # never inline inside `go` — the call must STAY a call, or it
+            # would run synchronously in the caller
+            e.call.args = [rw(a) for a in e.call.args]
         elif t == "Call":
             e.args = [rw(a) for a in e.args]
             if type(e.callee).__name__ != "Var":
@@ -687,6 +695,10 @@ class Compiler:
     def expr(self, p, n, ctx):
         n = _fold(n)
         t = type(n).__name__
+        if t == "GoTask":
+            raise VidyaxError(
+                "'go' runs on the default engine for now — VM/native "
+                "support is Phase C of docs/CONCURRENCY.md", n.line)
         if t == "Number":
             self.emit(p, "CONST", ("H", self.cnum(n.v)))
         elif t == "Str":
