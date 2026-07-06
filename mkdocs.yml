@@ -8,6 +8,7 @@ repo_name: Vidyax-Lang/Vidyax
 
 theme:
   name: material
+  custom_dir: overrides
   language: en
   palette:
     - scheme: default
