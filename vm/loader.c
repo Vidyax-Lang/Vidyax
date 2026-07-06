@@ -112,7 +112,8 @@ static int opsize(uint8_t op) {   /* operand bytes; -1 = unknown opcode */
     case OP_NEG: case OP_EQ: case OP_NE: case OP_LT: case OP_LE:
     case OP_GT: case OP_GE: case OP_NOT: case OP_INDEX: case OP_RET:
     case OP_PRINT: case OP_ASK: case OP_CHECK_RPT: case OP_CHECK_ITER:
-    case OP_LEN: case OP_TRY_POP: case OP_HALT: case OP_AI_NEW: return 0;
+    case OP_LEN: case OP_TRY_POP: case OP_HALT: case OP_AI_NEW:
+    case OP_AGENT: return 0;
     default: return -1;
     }
 }

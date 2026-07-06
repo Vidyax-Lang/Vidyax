@@ -261,6 +261,24 @@ export GROQ_API_KEY=gsk_xxxxx
 export OPENAI_API_KEY=sk_xxxxx
 ```
 
+### Agents: AI with a persona and a memory
+
+For anything conversational, declare an **agent** — a named AI persona
+that remembers its conversation:
+
+```vidyax
+agent guru:
+    system "kamu guru fisika, jawab singkat"
+
+print guru("apa itu gravitasi?")
+print guru("jelaskan lebih sederhana")  # it remembers the topic!
+```
+
+Each agent keeps its own history, so two agents can even talk to each
+other (see `contoh/agen.vx`). Agents work with `go`/`wait` too — but
+remember: one agent is one conversation, so run *different* agents in
+parallel, not the same one.
+
 ---
 
 ## 11. Working with lists and text

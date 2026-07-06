@@ -117,6 +117,12 @@ CASES = [
      "variable 'q' is not defined\n5\n"),
     # list concat with +, like the VM's do_add
     ('print [1, 2] + [3]\n', "[1, 2, 3]\n"),
+    # agents (docs/CONCURRENCY.md Phase E): declaration is offline —
+    # config + identity checks need no network; only calls hit the API
+    ('agent riset:\n    system "kamu peneliti"\n'
+     'print type(riset)\nprint riset\n', "agent\n<agent riset>\n"),
+    ('agent polos:\n    model "llama-3.1-8b-instant"\n'
+     'print type(polos)\n', "agent\n"),
     # stdlib: time (Phase A of the concurrency design, docs/CONCURRENCY.md)
     ('t0: now()\nsleep(0.01)\nd: now() - t0\nprint d >= 0.01 and d < 10\n'
      'print type(now())\n', "true\nnumber\n"),
@@ -171,6 +177,9 @@ ERROR_CASES = [
     ('push(5, 1)\n', "push() needs a list and a value"),
     ('print split("ab", "")\n', "empty separator"),
     ('sleep(-1)\n', "sleep() needs a number of seconds >= 0"),
+    ('agent x:\n    system "s"\nprint x()\n',
+     "agent 'x' needs 1 message, got 0"),
+    ('agent x:\n    model "claude:sonnet"\n', "unknown AI provider"),
     ('print now(1)\n', "now() takes no values"),
 ]
 

@@ -272,6 +272,11 @@ class Index(Node):
 class GoTask(Node):
     """`go f(args)` — run the call as a concurrent task (docs/CONCURRENCY.md)."""
     def __init__(self, call, line): self.call = call; self.line = line
+class AgentDef(Node):
+    """`agent name:` block — a stateful AI persona callable like a function."""
+    def __init__(self, name, model, system, line):
+        self.name = name; self.model = model
+        self.system = system; self.line = line
 
 
 # =====================================================================
@@ -374,8 +379,7 @@ class Parser:
                 if self.loop_depth == 0:
                     raise VidyaxError("'continue' only works inside a loop", t.line)
                 self.eat(); self.eat("NEWLINE"); return Continue()
-            if t.value == "agent":
-                raise VidyaxError("'agent' is not supported yet (roadmap)", t.line)
+            if t.value == "agent":   return self.stmt_agent()
         # assignment: NAME ':' expr
         if t.kind == "NAME" and self.peek(1).kind == "OP" and self.peek(1).value == ":":
             name = self.guard_name(self.eat("NAME"))
@@ -447,6 +451,32 @@ class Parser:
         self.func_depth -= 1
         self.loop_depth = saved_loop
         return FuncDef(name, params, body)
+
+    def stmt_agent(self):
+        # agent NAME:
+        #     model  <expr>      (optional)
+        #     system <expr>      (optional)
+        t = self.eat("KEYWORD", "agent")
+        name = self.guard_name(self.eat("NAME"))
+        self.eat("OP", ":")
+        self.eat("NEWLINE")
+        self.eat("INDENT")
+        model = system = None
+        while not self.at("DEDENT"):
+            key = self.peek()
+            if key.kind != "NAME" or key.value not in ("model", "system"):
+                raise VidyaxError(
+                    "inside 'agent', only 'model' and 'system' lines are "
+                    "allowed", key.line)
+            self.eat("NAME")
+            val = self.expression()
+            self.eat("NEWLINE")
+            if key.value == "model":
+                model = val
+            else:
+                system = val
+        self.eat("DEDENT")
+        return AgentDef(name, model, system, t.line)
 
     def stmt_return(self):
         t = self.eat("KEYWORD", "return")
@@ -696,6 +726,8 @@ def assigned_names(body):
             stack.extend(s.try_body); stack.extend(s.catch_body)
         elif t == "FuncDef":
             names.add(s.name)  # the func name binds locally; body = new scope
+        elif t == "AgentDef":
+            names.add(s.name)  # `agent x:` binds the name x (a callable)
         elif t == "Import":
             names.add(s.name)  # `use ai` binds the name 'ai'
     return names
@@ -790,6 +822,11 @@ class Interpreter:
             raise VidyaxError(f"module '{n.name}' is not supported yet (roadmap)")
         else:
             raise VidyaxError(f"unknown module '{n.name}'")
+
+    def exec_AgentDef(self, n, env):
+        model = self.eval(n.model, env) if n.model is not None else None
+        system = self.eval(n.system, env) if n.system is not None else None
+        env.set(n.name, RT["_Agent"](n.name, model, system))
 
     def exec_ExprStmt(self, n, env):
         self.eval(n.expr, env)
@@ -1056,6 +1093,7 @@ def _vstr(v):
     if isinstance(v, float): return str(int(v)) if v.is_integer() else str(v)
     if isinstance(v, list): return "[" + ", ".join(_vstr(x) for x in v) + "]"
     if type(v).__name__ == "_VTask": return "<task %s>" % v.name
+    if type(v).__name__ == "_Agent": return "<agent %s>" % v._name
     return str(v)
 
 def _add(a, b):
@@ -1168,17 +1206,15 @@ class _AI:
     def system(self, text):
         self.system_prompt = str(text)
         return self
-    def ask(self, prompt):
+    def _ask_messages(self, messages):
+        # POST a full message list and return the reply text. Shared by
+        # ai.ask (stateless) and _Agent (stateful, sends its history).
         url, keyname = _AI_PROVIDERS[self.provider]
         key = _os.environ.get(keyname)
         if not key:
             raise _VidyaxRuntime(
                 keyname + " is not set. Run: export " + keyname + "=...  "
                 "(ai.ask needs internet & an API key)")
-        messages = []
-        if self.system_prompt:
-            messages.append({"role": "system", "content": self.system_prompt})
-        messages.append({"role": "user", "content": str(prompt)})
         body = _json.dumps({"model": self.model,
             "messages": messages}).encode()
         req = _ureq.Request(url,
@@ -1200,6 +1236,41 @@ class _AI:
             if isinstance(data, dict) and isinstance(data.get("error"), dict):
                 detail = ": " + str(data["error"].get("message", ""))[:200]
             raise _VidyaxRuntime("AI gave an unexpected reply" + detail)
+
+    def ask(self, prompt):
+        messages = []
+        if self.system_prompt:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": str(prompt)})
+        return self._ask_messages(messages)
+
+
+class _Agent:
+    # A named, stateful AI persona (docs/CONCURRENCY.md Phase E). Config
+    # is fixed at declaration; each call appends to a running conversation
+    # history, so the agent "remembers". One agent = one conversation —
+    # for independent parallel work, make several agents.
+    def __init__(self, name, model=None, system=None):
+        self._name = name
+        self._ai = _AI()
+        if model is not None:
+            self._ai.open(_vstr(model))
+        if system is not None:
+            self._ai.system(_vstr(system))
+        self._history = []
+    def __call__(self, *args):
+        if len(args) != 1:
+            raise _VidyaxRuntime(
+                "agent '%s' needs 1 message, got %d" % (self._name, len(args)))
+        self._history.append({"role": "user", "content": _vstr(args[0])})
+        messages = []
+        if self._ai.system_prompt:
+            messages.append({"role": "system",
+                             "content": self._ai.system_prompt})
+        messages.extend(self._history)
+        reply = self._ai._ask_messages(messages)
+        self._history.append({"role": "assistant", "content": reply})
+        return reply
 
 def _member(o, name):
     # Member-access policy, shared by both engines:
@@ -1287,6 +1358,7 @@ def _b_type(x):
     if isinstance(x, list): return "list"
     if x is None: return "null"
     if type(x).__name__ == "_VTask": return "task"
+    if type(x).__name__ == "_Agent": return "agent"
     return "object"
 
 def _b_get(url):
@@ -1674,6 +1746,11 @@ class Transpiler:
                 raise VidyaxError(f"module '{n.name}' is not supported yet (roadmap)")
             else:
                 raise VidyaxError(f"unknown module '{n.name}'")
+        elif t == "AgentDef":
+            model = self.expr(n.model) if n.model is not None else "None"
+            system = self.expr(n.system) if n.system is not None else "None"
+            self.emit(indent, "%s = _Agent(%r, %s, %s)"
+                      % (_pyname(n.name), n.name, model, system))
         elif t == "ExprStmt":
             self.emit(indent, self.expr(n.expr))
         else:

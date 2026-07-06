@@ -86,6 +86,8 @@ def _refs_in(stmts):
             for x in s.catch_body: st(x)
         elif t == "FuncDef":
             for x in s.body: st(x)   # descend: nested-nested captures count
+        elif t == "AgentDef":
+            ex(s.model); ex(s.system); out.add(s.name)
         elif t == "Return":
             ex(s.value)
         elif t == "Import":
@@ -156,6 +158,7 @@ OPS = {
     "AI_NEW": 40,      # push a fresh 'ai' module object
     "GET_MEMBER": 41,  # u16 const idx (member name str); pops obj, pushes member
     "GO": 42,          # u8 argc — run the call as a task (docs/CONCURRENCY.md)
+    "AGENT": 43,       # pops system, model, name -> pushes an agent
 }
 
 
@@ -635,6 +638,19 @@ class Compiler:
             self.emit(sub, "NULL")   # falling off the end returns null
             self.emit(sub, "RET")
             self.emit(p, "MAKE_FUNC", ("H", ix))
+            self.name_store(p, n.name)
+        elif t == "AgentDef":
+            # push name, model(or null), system(or null); AGENT builds it
+            self.emit(p, "CONST", ("H", self.cstr(n.name)))
+            if n.model is not None:
+                self.expr(p, n.model, ctx)
+            else:
+                self.emit(p, "NULL")
+            if n.system is not None:
+                self.expr(p, n.system, ctx)
+            else:
+                self.emit(p, "NULL")
+            self.emit(p, "AGENT")
             self.name_store(p, n.name)
         elif t == "Return":
             if n.value is None:

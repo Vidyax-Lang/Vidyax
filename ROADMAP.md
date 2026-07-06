@@ -1,25 +1,30 @@
 # Vidyax — Roadmap / Catatan Fitur
 
-**Status: v1.2** — stdlib lengkap (file, math, string) SUDAH masuk.
+**Status: v1.3** — backlog fitur tuntas: 4 engine paritas penuh, optimizer, native backend, concurrency go/wait + agent, modul & package manager, toolchain lengkap (REPL/debugger/profiler/disasm/LSP).
 
 Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas siap.
 
 ## Prioritas berikutnya
 
-1. **Concurrency Fase E (opsional)** — keyword `agent`: gula sintaks di atas
-   task untuk alur kerja AI. `go`/`wait` sendiri SUDAH tuntas di KEEMPAT
-   engine (Fase A-D). Desain: `docs/CONCURRENCY.md`.
+Backlog fitur HABIS — fokus berikutnya adopsi (publikasi, umpan balik
+pemula, paket komunitas). Ide teknis tersisa ada di bawah.
 
 ## Ide lain (belum diprioritaskan)
 
 - SSA penuh di atas lapisan CFG (phi node, versi variabel) — baru berguna
   saat optimasi native lanjutan dikerjakan.
 - Package manager v2: resolusi versi + lockfile (v1 tanpa versi).
-- Migrasi extension VS Code ke klien LSP `vidyax lsp`.
 
 ## Selesai
 
 ### v1.3
+
+- ~~Keyword `agent` (Concurrency Fase E)~~ -> `agent nama:` blok persona AI
+  STATEFUL (model/system terkunci saat deklarasi, riwayat percakapan per
+  agen; dipanggil seperti fungsi; kompatibel go/wait) — identik di KEEMPAT
+  engine (`_Agent` runtime bersama; `OAgent`+`OP_AGENT` di VM/native, ai_ask
+  direfactor jadi ai_post bersama). Contoh dua agen berdialog:
+  `contoh/agen.vx`. 4 test offline baru; gc-stress/ASan hijau.
 
 - ~~Package manager~~ -> sistem modul `use X` diselesaikan di FRONT-END
   (splice AST modul saat parse: dedup include-once + deteksi siklus;
@@ -69,9 +74,8 @@ Catatan fitur yang mau dikerjain nanti. Bukan urutan wajib, tinggal ambil pas si
 - ~~LSP~~ -> `vidyax lsp` (vxlsp.py, tanpa dependensi, JSON-RPC stdio):
   diagnostics live (share front-end `check_source`), completion (keyword +
   35 builtin ber-dokumentasi + nama di dokumen), hover builtin, document
-  symbols. Bisa dipakai editor mana pun ber-klien LSP (Neovim, Helix, dst.);
-  extension VS Code masih pakai jalur `vidyax check`-nya sendiri (migrasi
-  ke klien LSP = ide lanjutan).
+  symbols. Bisa dipakai editor mana pun ber-klien LSP; extension VS Code
+  v1.2.x kini memakainya sebagai klien (diagnostics/completion/hover).
 - ~~Profiler~~ -> `vidyax profile file.vx` / `vxvm --profile` (modul
   `vm/profile.c`): deterministik (hitung instruksi, bukan sampling) —
   total + instr/detik, panggilan & porsi instruksi per fungsi, top-10

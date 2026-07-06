@@ -326,8 +326,27 @@ Running with no arguments opens the interactive REPL:
 - **Ctrl-C** cancels a half-typed block or stops a running program
   without leaving the REPL; **Ctrl-D** exits.
 
-Roadmap commands (recognized but not yet runnable): `fmt`, and the
-keyword `agent`.
+Roadmap commands (recognized but not yet runnable): `fmt`.
+
+### Agents (`agent`)
+
+```vidyax
+agent guru:
+    model  "llama-3.1-8b-instant"   # optional (this is the default)
+    system "kamu guru fisika, jawab singkat"
+
+print guru("apa itu gravitasi?")
+print guru("jelaskan lebih sederhana")   # remembers the conversation
+```
+
+`agent name:` declares a **stateful AI persona**: `model` and `system`
+are fixed at declaration, and every call appends to a running
+conversation, so the agent remembers earlier messages. An agent is
+called like a one-argument function and works with `go`/`wait`
+(`t: go guru("...")`). One agent = one conversation — for independent
+parallel work, declare several agents. `type(a)` is `"agent"`; printing
+one shows `<agent name>`. Only `model` and `system` lines are allowed in
+the block, and both are optional.
 
 ### Modules (`use`) and packages (`vidyax install`)
 

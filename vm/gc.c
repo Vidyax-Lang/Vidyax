@@ -96,6 +96,13 @@ static void mark_obj(Obj *o) {
         mark_value(t->result);
         break;
     }
+    case O_AGENT: {
+        OAgent *a = (OAgent *)o;
+        mark_obj((Obj *)a->name);
+        mark_obj((Obj *)a->ai);
+        mark_obj((Obj *)a->history);
+        break;
+    }
     case O_ENV: {
         Env *e = (Env *)o;
         for (uint32_t i = 0; i < e->count; i++) {
@@ -135,6 +142,9 @@ static void free_obj(Obj *o) {   /* mirrors every byte alloc counted */
         break;
     case O_BOUND:
         __atomic_sub_fetch(&mem_used, sizeof(OBound), __ATOMIC_RELAXED);
+        break;
+    case O_AGENT:
+        __atomic_sub_fetch(&mem_used, sizeof(OAgent), __ATOMIC_RELAXED);
         break;
     case O_TASK: {   /* only ever swept after it was joined */
         OTask *t = (OTask *)o;

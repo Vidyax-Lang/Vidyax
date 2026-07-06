@@ -1,8 +1,7 @@
 # Vidyax Concurrency — Design Document (v1 draft)
 
-Status: **Phases A-D shipped — `go`/`wait` runs on all FOUR engines**
-(walker, fast, VVM, native). The keywords `go` and `agent` have been
-reserved since v1.0.
+Status: **all phases shipped (A-E)** — `go`/`wait` and `agent` run on
+all FOUR engines (walker, fast, VVM, native).
 
 ## 1. Goals and hard constraints
 
@@ -96,8 +95,12 @@ the reason this document exists before any code.
 - **D (done):** native backend — task.c became engine-agnostic via a
   `vx_task_runner` hook (VM: bytecode loop; native: the compiled NFN[]
   call); `ntry` went thread-local. Verified under ThreadSanitizer.
-- **E:** `agent` keyword — sugar over tasks for AI workflows (design
-  later, on top of a proven task layer).
+- **E (done):** the `agent` keyword — `agent name:` declares a stateful
+  AI persona (`model`/`system` fixed at declaration, conversation history
+  per agent). Lives in the shared runtime (`_Agent`) for the Python
+  engines and as `OAgent` + `OP_AGENT` in the C engines; callable like a
+  function and compatible with `go`/`wait`. Rule of thumb documented:
+  one agent = one conversation; parallelize with several agents.
 
 ## 7. Decisions (signed off by the language owner, 6 Jul 2026)
 
@@ -107,4 +110,4 @@ the reason this document exists before any code.
 3. **No timeout in v1** — `wait(t, max_secs)` and task cancellation are
    v2 questions.
 
-Status: design APPROVED; Phases A-D shipped. Next: Phase E (`agent`).
+Status: design APPROVED; **all phases (A-E) shipped**.

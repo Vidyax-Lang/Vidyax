@@ -203,17 +203,13 @@ static OBound *new_bound(OAI *self, int method) {
     b->self = self; b->method = method;
     return b;
 }
-static Value ai_ask(OAI *self, OStr *prompt) {
-    if (!allow_net)
-        vm_error("network access is not allowed "
-                 "(pass --allow-net to enable ai.ask / get)");
-#ifndef VX_HAVE_CURL
-    (void)self; (void)prompt;
-    vm_error("ai.ask needs libcurl (rebuild vxvm with libcurl available)");
-    return vnull();
-#else
+#ifdef VX_HAVE_CURL
+/* POST a pre-built JSON body to the provider's chat endpoint and return
+ * the reply text. Shared by ai.ask (stateless) and agents (stateful).
+ * Takes ownership of `body` (frees it). Raises on any failure. */
+static Value ai_post(int provider, SB *body) {
     const char *url, *keyname;
-    if (self->provider == PROV_OPENAI) {
+    if (provider == PROV_OPENAI) {
         url = "https://api.openai.com/v1/chat/completions";
         keyname = "OPENAI_API_KEY";
     } else {
@@ -221,30 +217,17 @@ static Value ai_ask(OAI *self, OStr *prompt) {
         keyname = "GROQ_API_KEY";
     }
     const char *key = getenv(keyname);
-    if (!key || !*key)
+    if (!key || !*key) {
+        xfree(body->buf, body->cap);
         vm_error("%s is not set. Run: export %s=...  "
                  "(ai.ask needs internet & an API key)", keyname, keyname);
-
-    SB body; sb_init(&body);
-    sb_puts(&body, "{\"model\":\"");
-    json_escape(&body, self->model->chars, self->model->len);
-    sb_puts(&body, "\",\"messages\":[");
-    if (self->system_prompt) {
-        sb_puts(&body, "{\"role\":\"system\",\"content\":\"");
-        json_escape(&body, self->system_prompt->chars,
-                    self->system_prompt->len);
-        sb_puts(&body, "\"},");
     }
-    sb_puts(&body, "{\"role\":\"user\",\"content\":\"");
-    json_escape(&body, prompt->chars, prompt->len);
-    sb_puts(&body, "\"}]}");
-
     SB resp; sb_init(&resp);
     long code = 0; char err[256];
     int rc;
-    VX_BLOCKING(rc = http_request(url, key, body.buf, &resp, &code,
+    VX_BLOCKING(rc = http_request(url, key, body->buf, &resp, &code,
                                   err, sizeof err));
-    xfree(body.buf, body.cap);
+    xfree(body->buf, body->cap);
     if (rc != 0) {
         char e[300]; snprintf(e, sizeof e, "%s", err);
         xfree(resp.buf, resp.cap);
@@ -272,6 +255,78 @@ static Value ai_ask(OAI *self, OStr *prompt) {
     xfree(em.buf, em.cap); xfree(resp.buf, resp.cap);
     vm_error("AI gave an unexpected reply");
     return vnull();
+}
+static void body_msg(SB *body, const char *role, OStr *content, int first) {
+    if (!first) sb_puts(body, ",");
+    sb_puts(body, "{\"role\":\""); sb_puts(body, role);
+    sb_puts(body, "\",\"content\":\"");
+    json_escape(body, content->chars, content->len);
+    sb_puts(body, "\"}");
+}
+#endif
+
+static Value ai_ask(OAI *self, OStr *prompt) {
+    if (!allow_net)
+        vm_error("network access is not allowed "
+                 "(pass --allow-net to enable ai.ask / get)");
+#ifndef VX_HAVE_CURL
+    (void)self; (void)prompt;
+    vm_error("ai.ask needs libcurl (rebuild vxvm with libcurl available)");
+    return vnull();
+#else
+    SB body; sb_init(&body);
+    sb_puts(&body, "{\"model\":\"");
+    json_escape(&body, self->model->chars, self->model->len);
+    sb_puts(&body, "\",\"messages\":[");
+    int first = 1;
+    if (self->system_prompt) {
+        body_msg(&body, "system", self->system_prompt, first); first = 0;
+    }
+    body_msg(&body, "user", prompt, first);
+    sb_puts(&body, "]}");
+    return ai_post(self->provider, &body);
+#endif
+}
+
+OAgent *new_agent(OStr *name, Value model, Value system) {
+    OAgent *a = (OAgent *)alloc_obj(sizeof(OAgent), O_AGENT);
+    a->name = name;
+    a->ai = new_ai();
+    a->history = new_list(4);
+    if (model.t != V_NULL)  ai_open(a->ai, vstr(model)->chars);
+    if (system.t != V_NULL) a->ai->system_prompt = vstr(system);
+    return a;
+}
+
+Value agent_ask(OAgent *a, OStr *prompt) {
+    if (!allow_net)
+        vm_error("network access is not allowed "
+                 "(pass --allow-net to enable ai.ask / get)");
+#ifndef VX_HAVE_CURL
+    (void)a; (void)prompt;
+    vm_error("agents need libcurl (rebuild vxvm with libcurl available)");
+    return vnull();
+#else
+    SB body; sb_init(&body);
+    sb_puts(&body, "{\"model\":\"");
+    json_escape(&body, a->ai->model->chars, a->ai->model->len);
+    sb_puts(&body, "\",\"messages\":[");
+    int first = 1;
+    if (a->ai->system_prompt) {
+        body_msg(&body, "system", a->ai->system_prompt, first); first = 0;
+    }
+    for (uint32_t i = 0; i < a->history->count; i++) {
+        body_msg(&body, (i % 2 == 0) ? "user" : "assistant",
+                 AS_STR(a->history->items[i]), first);
+        first = 0;
+    }
+    body_msg(&body, "user", prompt, first);
+    sb_puts(&body, "]}");
+    /* build first, then POST: on failure (longjmp) history is untouched */
+    Value reply = ai_post(a->ai->provider, &body);
+    list_push(a->history, vstr_o(prompt));
+    list_push(a->history, reply);
+    return reply;
 #endif
 }
 Value ai_invoke(OAI *self, int method, int argc, Value *args) {

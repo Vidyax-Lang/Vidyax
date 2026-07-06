@@ -232,6 +232,14 @@ void vx_run_loop(void) {
                                     &stack[sp - argc]);
                 sp -= argc + 1;
                 push(r);
+            } else if (callee.t == V_AGENT) {
+                OAgent *ag = AS_AGENT(callee);
+                if (argc != 1)
+                    vm_error("agent '%s' needs 1 message, got %d",
+                             ag->name->chars, argc);
+                Value r = agent_ask(ag, vstr(stack[sp - 1]));
+                sp -= argc + 1;
+                push(r);
             } else if (callee.t == V_FUNC) {
                 OFunc *fn = AS_FUNC(callee);
                 Proto *pr = fn->proto;
@@ -299,6 +307,13 @@ void vx_run_loop(void) {
             push(r);
             if (nframes == 0)
                 return;   /* a task's entry call returned: result on top */
+            break;
+        }
+        case OP_AGENT: {
+            Value system = pop(), model = pop(), name = pop();
+            push((Value){ .t = V_AGENT,
+                          .as.o = (Obj *)new_agent(AS_STR(name),
+                                                   model, system) });
             break;
         }
         case OP_GO: {

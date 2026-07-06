@@ -37,12 +37,13 @@ enum {
     OP_TRY_PUSH, OP_TRY_POP, OP_HALT,
     OP_LOAD_SLOT, OP_STORE_SLOT,
     OP_AI_NEW, OP_GET_MEMBER,
-    OP_GO,   /* u8 argc — run the call as a task (docs/CONCURRENCY.md) */
+    OP_GO,     /* u8 argc — run the call as a task (docs/CONCURRENCY.md) */
+    OP_AGENT,  /* pops system, model, name -> pushes a stateful agent */
 };
 
 /* ---- values & objects ---- */
 typedef enum { V_NULL, V_BOOL, V_NUM, V_STR, V_LIST, V_FUNC, V_BUILTIN,
-               V_AI, V_BOUND, /* ai module object + bound method */
+               V_AI, V_BOUND, V_AGENT, /* ai module, bound method, agent */
                V_TASK,        /* a `go` task */
                V_UNSET /* internal: slot declared but not yet assigned */ } VType;
 typedef struct Obj Obj;
@@ -52,7 +53,8 @@ typedef struct Value {
 } Value;
 
 typedef enum { O_STR, O_LIST, O_FUNC, O_ENV, O_AI, O_BOUND,
-               O_TASK /* a `go` task (docs/CONCURRENCY.md, Phase C) */ } OType;
+               O_TASK, /* a `go` task (docs/CONCURRENCY.md, Phase C) */
+               O_AGENT /* a stateful AI agent (Phase E) */ } OType;
 struct Obj {           /* common header; `next`+`mark` reserved for GC */
     OType type;
     Obj  *next;
@@ -110,6 +112,10 @@ enum { AIM_OPEN = 0, AIM_SYSTEM = 1, AIM_ASK = 2 };
 typedef struct { Obj h; int provider; OStr *model; OStr *system_prompt; } OAI;
 typedef struct { Obj h; OAI *self; int method; } OBound;
 
+/* a stateful AI agent (Phase E): fixed config in `ai`, plus a running
+ * conversation `history` (alternating OStr: user, assistant, user, ...) */
+typedef struct { Obj h; OStr *name; OAI *ai; OList *history; } OAgent;
+
 typedef Value (*BuiltinFn)(int argc, Value *args);
 typedef struct { const char *name; BuiltinFn fn; } Builtin;
 /* builtin Value: as.o abused to hold Builtin* (never GC'd, static table) */
@@ -119,6 +125,7 @@ typedef struct { const char *name; BuiltinFn fn; } Builtin;
 #define AS_FUNC(v) ((OFunc *)(v).as.o)
 #define AS_AI(v)   ((OAI *)(v).as.o)
 #define AS_BOUND(v) ((OBound *)(v).as.o)
+#define AS_AGENT(v) ((OAgent *)(v).as.o)
 
 /* ---- string builder ---- */
 typedef struct { char *buf; size_t len, cap; } SB;
@@ -238,6 +245,8 @@ int   http_request(const char *url, const char *auth, const char *body,
 OAI  *new_ai(void);
 Value ai_invoke(OAI *self, int method, int argc, Value *args);
 Value member_get(Value o, OStr *name);
+OAgent *new_agent(OStr *name, Value model, Value system);
+Value agent_ask(OAgent *a, OStr *prompt);
 
 /* ---- builtins.c ---- */
 extern Builtin BUILTINS[];

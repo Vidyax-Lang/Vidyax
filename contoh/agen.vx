@@ -1,0 +1,19 @@
+# Agen AI ber-persona yang INGAT percakapan (stateful).
+# Jalankan (butuh GROQ_API_KEY): vidyax contoh/agen.vx
+# Di VM/native: tambah --allow-net
+
+agent guru:
+    system "Kamu guru fisika SMA. Jawab bahasa Indonesia maksimal 2 kalimat."
+
+agent murid:
+    system "Kamu murid SMA yang penasaran. Balas dengan SATU pertanyaan lanjutan singkat."
+
+# guru menjelaskan, murid bertanya balik, guru menjawab lanjutannya —
+# tiap agen ingat percakapannya sendiri
+penjelasan: guru("Apa itu gravitasi?")
+print "guru : " + penjelasan
+
+tanya: murid(penjelasan)
+print "murid: " + tanya
+
+print "guru : " + guru(tanya)   # guru masih ingat konteks gravitasi

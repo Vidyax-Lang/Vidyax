@@ -44,6 +44,13 @@ static void *task_worker(void *arg) {
             if (callee.t == V_BUILTIN)
                 t->result = ((Builtin *)callee.as.o)
                                 ->fn(argc, &t->ctx->x_stack[1]);
+            else if (callee.t == V_AGENT) {
+                OAgent *ag = AS_AGENT(callee);
+                if (argc != 1)
+                    vm_error("agent '%s' needs 1 message, got %d",
+                             ag->name->chars, argc);
+                t->result = agent_ask(ag, vstr(t->ctx->x_stack[1]));
+            }
             else   /* V_BOUND (ai.ask) — checked at spawn */
                 t->result = ai_invoke(AS_BOUND(callee)->self,
                                       AS_BOUND(callee)->method,
@@ -64,7 +71,8 @@ static void *task_worker(void *arg) {
  * pushes the task value. Runs on the SPAWNING thread, lock held. */
 void task_spawn(int argc) {
     Value callee = stack[sp - argc - 1];
-    if (callee.t != V_FUNC && callee.t != V_BUILTIN && callee.t != V_BOUND)
+    if (callee.t != V_FUNC && callee.t != V_BUILTIN &&
+        callee.t != V_BOUND && callee.t != V_AGENT)
         vm_error("this is not a function");
     if (callee.t == V_FUNC && argc != AS_FUNC(callee)->proto->nparams)
         vm_error("function '%s' needs %d args, got %d",
@@ -78,7 +86,9 @@ void task_spawn(int argc) {
     else if (callee.t == V_BUILTIN) {
         const char *bn = ((Builtin *)callee.as.o)->name;
         t->name = new_str(bn, (uint32_t)strlen(bn));
-    } else
+    } else if (callee.t == V_AGENT)
+        t->name = AS_AGENT(callee)->name;
+    else
         t->name = NULL;   /* bound methods print as <task task> */
     t->started = t->done = t->waited = t->joined = 0;
     t->result = vnull();

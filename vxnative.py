@@ -336,6 +336,13 @@ def _gen_proto(c, ix, p):
             e("          Value r = ai_invoke(bm->self, bm->method, %d, "
               "&stack[sp - %d]);" % (arg, arg))
             e("          sp -= %d + 1; push(r);" % arg)
+            e("      } else if (callee.t == V_AGENT) {")
+            e("          OAgent *ag = AS_AGENT(callee);")
+            e("          if (%d != 1)" % arg)
+            e('              vm_error("agent \'%s\' needs 1 message, got %d",')
+            e("                       ag->name->chars, %d);" % arg)
+            e("          Value r = agent_ask(ag, vstr(stack[sp - 1]));")
+            e("          sp -= %d + 1; push(r);" % arg)
             e("      } else if (callee.t == V_FUNC) {")
             e("          OFunc *fn = AS_FUNC(callee);")
             e("          Proto *pr = fn->proto;")
@@ -424,6 +431,11 @@ def _gen_proto(c, ix, p):
             e("      } }")
         elif nm == "GO":
             e("    task_spawn(%d);" % arg)
+        elif nm == "AGENT":
+            e("    { Value system = pop(), model = pop(), name = pop();")
+            e("      Value v; v.t = V_AGENT;")
+            e("      v.as.o = (Obj *)new_agent(AS_STR(name), model, system);")
+            e("      push(v); }")
         elif nm == "TRY_POP":
             e("    n_ntry--;")
         elif nm == "HALT":

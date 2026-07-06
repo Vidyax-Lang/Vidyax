@@ -92,6 +92,10 @@ void vstr_into(SB *sb, Value v) {
         sb_puts(sb, "<func ");
         sb_puts(sb, ((Builtin *)v.as.o)->name); sb_puts(sb, ">"); break;
     case V_AI: sb_puts(sb, "<ai>"); break;
+    case V_AGENT:
+        sb_puts(sb, "<agent ");
+        sb_puts(sb, AS_AGENT(v)->name->chars);
+        sb_puts(sb, ">"); break;
     case V_TASK:
         sb_puts(sb, "<task ");
         sb_puts(sb, AS_TASK(v)->name ? AS_TASK(v)->name->chars : "task");
@@ -128,6 +132,7 @@ double as_num(Value v) { return v.t == V_BOOL ? (double)v.as.b : v.as.n; }
 const char *type_name(Value v) {
     switch (v.t) {
     case V_TASK: return "task";
+    case V_AGENT: return "agent";
     case V_BOOL: return "bool";  case V_NUM:  return "number";
     case V_STR:  return "text";  case V_LIST: return "list";
     case V_NULL: return "null";  default:     return "object";
