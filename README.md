@@ -211,6 +211,6 @@ This project is licensed under the terms specified in the [LICENSE](https://gith
 
 <div align="center">
 
-**Built by [NaDev](https://github.com/daffa2555)** · from a student's hands, for students.
+**Built by [NaDev](https://github.com/daffa2555)** 
 
 </div>
