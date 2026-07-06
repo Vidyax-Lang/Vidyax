@@ -157,6 +157,197 @@ OPS = {
 
 
 
+# --- optimizer: inlining (VM pipeline only) ---------------------------
+# The Python engines keep the original AST; the differential suite +
+# fuzzer prove the inlined program still behaves identically. The rules
+# are deliberately conservative — every one of them guards an observable
+# behavior (error messages, evaluation order, definedness checks):
+#
+#   function:  defined once at top level, never reassigned, never used
+#              as a value (only ever called directly)
+#   body:      exactly `return <expr>` where <expr> uses only literals,
+#              its own params, and *builtin* calls; no `and`/`or`
+#              (short-circuit could skip an argument read); every param
+#              is used, and first uses appear in declaration order
+#              (so argument evaluation order is preserved)
+#   call site: argc matches, and every argument is a literal or a plain
+#              variable (pure — re-reading or reordering them is safe)
+
+import copy as _copy
+
+
+def _inline_expr_ok(n, params, first_uses):
+    t = type(n).__name__
+    if t in ("Number", "Str", "Bool", "Null"):
+        return True
+    if t == "Var":
+        if n.name not in params:
+            return False
+        if n.name not in first_uses:
+            first_uses.append(n.name)
+        return True
+    if t == "BinOp":
+        if n.op in ("and", "or"):
+            return False
+        return (_inline_expr_ok(n.l, params, first_uses)
+                and _inline_expr_ok(n.r, params, first_uses))
+    if t == "UnaryOp":
+        return _inline_expr_ok(n.operand, params, first_uses)
+    if t == "Call":
+        if type(n.callee).__name__ != "Var":
+            return False
+        if n.callee.name not in vidyax.BUILTIN_NAMES:
+            return False
+        return all(_inline_expr_ok(a, params, first_uses) for a in n.args)
+    return False
+
+
+def _pure_arg(n):
+    return type(n).__name__ in ("Number", "Str", "Bool", "Null", "Var")
+
+
+def _subst(n, mapping):
+    """Clone `n`, replacing param Vars with (copies of) the arg nodes."""
+    t = type(n).__name__
+    if t == "Var":
+        return _copy.deepcopy(mapping[n.name])
+    n = _copy.copy(n)
+    if t == "BinOp":
+        n.l = _subst(n.l, mapping); n.r = _subst(n.r, mapping)
+    elif t == "UnaryOp":
+        n.operand = _subst(n.operand, mapping)
+    elif t == "Call":
+        n.args = [_subst(a, mapping) for a in n.args]
+    return n
+
+
+def _collect_candidates(ast):
+    defs, banned = {}, set()
+    for s in ast.body:
+        if type(s).__name__ == "FuncDef":
+            if s.name in defs:
+                banned.add(s.name)          # redefined -> unpredictable
+            defs[s.name] = s
+
+    def scan_expr(e, callee_of=None):
+        t = type(e).__name__
+        if t == "Var" and e is not callee_of and e.name in defs:
+            banned.add(e.name)              # used as a value
+        elif t == "BinOp":
+            scan_expr(e.l); scan_expr(e.r)
+        elif t == "UnaryOp":
+            scan_expr(e.operand)
+        elif t == "Call":
+            if type(e.callee).__name__ == "Var":
+                scan_expr(e.callee, callee_of=e.callee)
+            else:
+                scan_expr(e.callee)
+            for a in e.args:
+                scan_expr(a)
+        elif t == "ListLit":
+            for x in e.items:
+                scan_expr(x)
+        elif t in ("Member", "Index"):
+            scan_expr(e.obj)
+            if t == "Index":
+                scan_expr(e.idx)
+        elif t == "Input":
+            scan_expr(e.prompt)
+
+    def scan_stmts(stmts):
+        for s in stmts:
+            t = type(s).__name__
+            if t == "Assign":
+                if s.name in defs:
+                    banned.add(s.name)      # reassigned
+                scan_expr(s.value)
+            elif t in ("Print", "ExprStmt"):
+                scan_expr(s.expr)
+            elif t == "Return" and s.value is not None:
+                scan_expr(s.value)
+            elif t == "If":
+                scan_expr(s.cond); scan_stmts(s.body); scan_stmts(s.orelse)
+            elif t == "RepeatN":
+                scan_expr(s.count); scan_stmts(s.body)
+            elif t == "ForEach":
+                scan_expr(s.iterable); scan_stmts(s.body)
+            elif t == "FuncDef":
+                scan_stmts(s.body)
+            elif t == "TryCatch":
+                scan_stmts(s.try_body); scan_stmts(s.catch_body)
+
+    scan_stmts(ast.body)
+
+    out = {}
+    for name, f in defs.items():
+        if name in banned or len(f.body) != 1:
+            continue
+        ret = f.body[0]
+        if type(ret).__name__ != "Return" or ret.value is None:
+            continue
+        first_uses = []
+        if not _inline_expr_ok(ret.value, set(f.params), first_uses):
+            continue
+        if first_uses != list(f.params):    # every param used, in order
+            continue
+        out[name] = (f.params, ret.value)
+    return out
+
+
+def _inline_program(ast):
+    cand = _collect_candidates(ast)
+    if not cand:
+        return ast
+
+    def rw(e):
+        t = type(e).__name__
+        if t == "BinOp":
+            e.l = rw(e.l); e.r = rw(e.r)
+        elif t == "UnaryOp":
+            e.operand = rw(e.operand)
+        elif t == "ListLit":
+            e.items = [rw(x) for x in e.items]
+        elif t == "Member":
+            e.obj = rw(e.obj)
+        elif t == "Index":
+            e.obj = rw(e.obj); e.idx = rw(e.idx)
+        elif t == "Input":
+            e.prompt = rw(e.prompt)
+        elif t == "Call":
+            e.args = [rw(a) for a in e.args]
+            if type(e.callee).__name__ != "Var":
+                e.callee = rw(e.callee)
+            elif (e.callee.name in cand
+                    and len(e.args) == len(cand[e.callee.name][0])
+                    and all(_pure_arg(a) for a in e.args)):
+                params, body = cand[e.callee.name]
+                return _subst(body, dict(zip(params, e.args)))
+        return e
+
+    def rw_stmts(stmts):
+        for s in stmts:
+            t = type(s).__name__
+            if t == "Assign":
+                s.value = rw(s.value)
+            elif t in ("Print", "ExprStmt"):
+                s.expr = rw(s.expr)
+            elif t == "Return" and s.value is not None:
+                s.value = rw(s.value)
+            elif t == "If":
+                s.cond = rw(s.cond); rw_stmts(s.body); rw_stmts(s.orelse)
+            elif t == "RepeatN":
+                s.count = rw(s.count); rw_stmts(s.body)
+            elif t == "ForEach":
+                s.iterable = rw(s.iterable); rw_stmts(s.body)
+            elif t == "FuncDef":
+                rw_stmts(s.body)
+            elif t == "TryCatch":
+                rw_stmts(s.try_body); rw_stmts(s.catch_body)
+
+    rw_stmts(ast.body)
+    return ast
+
+
 # --- optimizer: constant folding (behavior-preserving by design) ---
 def _fold(n):
     """Recursively fold literal arithmetic/comparisons. Returns a
@@ -781,6 +972,7 @@ def compile_source(source):
     tokens = vidyax.lex(source)
     ast = vidyax.Parser(tokens).parse()
     vidyax.type_check(ast)
+    _inline_program(ast)     # VM-only optimization; semantics-preserving
     return Compiler().compile_program(ast)
 
 

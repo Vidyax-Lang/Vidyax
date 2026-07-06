@@ -175,7 +175,7 @@ completion under `--max-mem 4000000` — 50 collections, peak ~1 MB.
 |---|----------|--------|
 | 1 | Core language on the C VM, VIR verification, sandbox limits, differential tests | **done** — 40/40 supported cases identical to both Python engines |
 | 2 | Mark-sweep GC + gc-stress + ASan verification | **done** |
-| 3 | Optimizing compiler: constant folding **(done)**; slot-based locals, dead-code elimination, peephole (next) | in progress |
+| 3 | Optimizing compiler: constant folding, slot-based locals, dead-code elimination, peephole, **function inlining** (single-`return` bodies, pure args; conservative rules preserve error text, argument evaluation order, and definedness checks — see `_inline_program` in vxc.py) | **done** |
 | 4 | `get`/`ai` via libcurl + `--allow-net` permission flag | **done** |
 | 5 | Orchestrator / automatic multi-engine dispatch | vision |
 

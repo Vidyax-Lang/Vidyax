@@ -46,6 +46,8 @@ Value env_get(Env *e, OStr *key) {
 void fmt_double(double v, char *buf, size_t n) {
     if (v != v) { snprintf(buf, n, "nan"); return; }
     if (isinf(v)) { snprintf(buf, n, v < 0 ? "-inf" : "inf"); return; }
+    if (v == 0) { snprintf(buf, n, "0"); return; }   /* -0.0 prints as 0,
+                                                        like Python _vstr */
     if (v == floor(v)) { snprintf(buf, n, "%.0f", v); return; }
     for (int prec = 1; prec <= 17; prec++) {
         snprintf(buf, n, "%.*g", prec, v);

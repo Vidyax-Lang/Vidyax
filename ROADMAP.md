@@ -10,7 +10,7 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ## Ide lain (belum diprioritaskan)
 
-- Optimizer lanjutan: inlining, escape analysis untuk alokasi, IR/SSA formal.
+- Optimizer lanjutan: escape analysis untuk alokasi, IR/SSA formal.
 - Native backend (sekarang baru VM bytecode).
 - Concurrency, package manager, LSP, debugger (target jangka panjang).
 
@@ -18,6 +18,12 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ### v1.3
 
+- ~~Optimizer: inlining~~ -> pass inlining di vxc.py (VM saja; engine Python
+  tetap referensi — differential test + fuzzer membuktikan perilaku identik).
+  Aturan konservatif: body `return <expr>` (param-only + builtin, tanpa
+  and/or), arg pure, urutan evaluasi & pesan error terjaga; sinergi dengan
+  constant folding (`sq(3)` -> `CONST 9`). ~18% lebih cepat di loop
+  padat-panggilan. Bonus fuzzer: bug `-0` di fmt_double VM ketahuan & fix.
 - ~~LSP~~ -> `vidyax lsp` (vxlsp.py, tanpa dependensi, JSON-RPC stdio):
   diagnostics live (share front-end `check_source`), completion (keyword +
   35 builtin ber-dokumentasi + nama di dokumen), hover builtin, document

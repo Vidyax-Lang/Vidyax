@@ -307,7 +307,9 @@ def run_all_tests():
     # the .vxc file, and check the expected structure is in the listing
     import tempfile
     import vxc
-    dis_src = 'func sq(n):\n    return n * n\nprint sq(7)\n'
+    # two-statement body on purpose: the inliner must NOT fire here, so
+    # the listing still contains a real MAKE_FUNC/CALL pair
+    dis_src = 'func sq(n):\n    y: n * n\n    return y\nprint sq(7)\n'
     with tempfile.TemporaryDirectory() as td:
         vx = os.path.join(td, "d.vx")
         with open(vx, "w") as f:
@@ -336,7 +338,9 @@ def run_all_tests():
         with tempfile.TemporaryDirectory() as td:
             dvx = os.path.join(td, "dbg.vx")
             with open(dvx, "w") as f:
-                f.write('func sq(n):\n    return n * n\nprint sq(7)\n')
+                # two-statement body: not inlinable, so the debugger can
+                # actually break inside the function frame
+                f.write('func sq(n):\n    y: n * n\n    return y\nprint sq(7)\n')
             dpath = vxc.compile_file(dvx)
             r = subprocess.run([vm_bin, "--debug", dpath],
                                input="b 2\nc\nlocals\nbt\nc\n",
@@ -344,7 +348,7 @@ def run_all_tests():
         dbg = r.stderr
         problems = []
         for want in ["[vxdbg] line 1 in <main>", "[vxdbg] line 2 in sq",
-                     "n = 7", "#1 <main> (line 3)"]:
+                     "n = 7", "#1 <main> (line 4)"]:
             if want not in dbg:
                 problems.append(f"debugger output missing {want!r}")
         if r.stdout.strip() != "49":
