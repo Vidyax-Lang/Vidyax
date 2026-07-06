@@ -19,6 +19,12 @@ Backlog v1.x sudah habis — ambil dari ide jangka panjang di bawah.
 
 ### v1.3
 
+- ~~Native backend~~ -> `vidyax native prog.vx -o prog` (vxnative.py): AOT
+  .vx -> C -> binary standalone. Tiap proto jadi fungsi C (tanpa dispatch
+  loop), di-link dengan runtime VM yang sama (value/gc/net/builtins) —
+  nilai, GC, builtin identik by construction; try/catch via setjmp per try.
+  fib(27) 2,6x lebih cepat dari VVM (~36x dari transpiler). Differential
+  60/60 program fuzz + test permanen di tests.py.
 - ~~Optimizer: lapisan IR/CFG~~ -> `_cfg` di vxc.py: bytecode didecode jadi
   basic block ber-edge eksplisit, lalu jump threading + eliminasi blok tak
   terjangkau (ekor `NULL/RET` mati, rantai JMP), + cabang `if` berkondisi

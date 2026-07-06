@@ -183,7 +183,8 @@ completion under `--max-mem 4000000` — 50 collections, peak ~1 MB.
 | 2 | Mark-sweep GC + gc-stress + ASan verification | **done** |
 | 3 | Optimizing compiler: constant folding, slot-based locals (functions **and** top level), dead-code elimination, peephole, **function inlining** (single-`return` bodies, pure args; conservative rules preserve error text, argument evaluation order, and definedness checks — see `_inline_program`), and a **CFG layer** (`_cfg` in vxc.py): bytecode is decoded into basic blocks with explicit edges, then jump-threaded and stripped of unreachable blocks (constant `if` branches are dropped at emit time). The CFG is the substrate a future SSA pass / native backend will consume. | **done** |
 | 4 | `get`/`ai` via libcurl + `--allow-net` permission flag | **done** |
-| 5 | Orchestrator / automatic multi-engine dispatch | vision |
+| 5 | **Native backend** (`vidyax native`, vxnative.py): every proto's optimized bytecode is translated to a C function (straight-line statements + `goto`, no dispatch loop) and linked against the VM's own runtime modules (value/gc/net/builtins) — identical values, GC, and builtins by construction. try/catch = one `setjmp` per `try` in its owning frame; `--allow-net`/`--allow-fs` supported, instruction/time limits stay VM-only. fib(27): **2.6× faster than the VVM** (~36× vs the transpiler). | **done** |
+| 6 | Orchestrator / automatic multi-engine dispatch | vision |
 
 Benchmark (fib(27), same machine): walk 4.46s → transpiler 0.21s →
 **vxvm 0.05s**. With slot-based locals the VVM now beats CPython ~4×.

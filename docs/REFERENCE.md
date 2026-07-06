@@ -288,6 +288,7 @@ the required environment variable.
 | `vidyax disasm <file.vxc>` | disassemble VVM bytecode (also accepts a `.vx`) |
 | `vidyax debug <file.vx>`  | run under the VVM line debugger (`b`/`c`/`s`/`n`/`bt`/`locals`) |
 | `vidyax profile <file.vx>` | run on the VVM + per-function/per-line instruction profile |
+| `vidyax native <file.vx> [-o out]` | compile to a standalone native binary (needs a C compiler) |
 | `vidyax check <file.vx>` | static check only, output errors as JSON (`-` = stdin) |
 | `vidyax lsp`             | start the Language Server Protocol server (stdio) |
 | `vidyax test`            | run the built-in tests (both engines) |

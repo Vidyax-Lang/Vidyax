@@ -1850,6 +1850,7 @@ def main():
             "  vidyax disasm <file.vxc>   disassemble VVM bytecode (or a .vx)\n"
             "  vidyax debug <file.vx>     run under the VVM line debugger\n"
             "  vidyax profile <file.vx>   run + per-line instruction profile\n"
+            "  vidyax native <file.vx>    compile to a standalone native binary\n"
             "  vidyax walk <file.vx>      run with the tree-walker (debug)\n"
             "  vidyax check <file.vx|->    static check only, JSON errors (- = stdin)\n"
             "  vidyax lsp                 start the Language Server (stdio)\n"
@@ -1914,6 +1915,23 @@ def main():
         try:
             import vxc  # noqa
             print(vxc.disasm_file(args[1]), end="")
+        except VidyaxError as e:
+            print(e.show()); sys.exit(1)
+        except OSError as e:
+            print(f"[Vidyax] cannot read {args[1]}: {e.strerror}"); sys.exit(1)
+    elif cmd == "native":
+        if len(args) < 2:
+            print("[Vidyax] usage: vidyax native <file.vx> [-o out]")
+            sys.exit(1)
+        out = None
+        if "-o" in args:
+            i = args.index("-o")
+            if i + 1 >= len(args):
+                print("[Vidyax] -o needs a path"); sys.exit(1)
+            out = args[i + 1]
+        try:
+            import vxnative  # noqa
+            print(f"[Vidyax] native -> {vxnative.native_file(args[1], out)}")
         except VidyaxError as e:
             print(e.show()); sys.exit(1)
         except OSError as e:

@@ -399,6 +399,37 @@ def run_all_tests():
         print("  SKIP profile-test 1 (vxvm not built)")
         passed += 1
 
+    # native backend smoke test: compile to a binary, outputs must match
+    import shutil as _sh
+    if _sh.which(os.environ.get("CC", "cc")):
+        import vxnative
+        nat_src = ('func fib(n):\n    if n <= 1:\n        return n\n'
+                   '    return fib(n - 1) + fib(n - 2)\n'
+                   'try:\n    x: 1 / 0\ncatch e:\n    print "err: " + e\n'
+                   'print fib(15)\nprint sort([3, 1, 2])\n')
+        want_nat = "err: cannot divide by 0\n610\n[1, 2, 3]\n"
+        with tempfile.TemporaryDirectory() as td:
+            nvx = os.path.join(td, "n.vx")
+            with open(nvx, "w") as f:
+                f.write(nat_src)
+            try:
+                nbin = vxnative.native_file(nvx, os.path.join(td, "n"))
+                r = subprocess.run([nbin], capture_output=True, text=True,
+                                   timeout=30)
+                ok = r.stdout == want_nat and r.returncode == 0
+                detail = "" if ok else f" (got {r.stdout!r})"
+            except vidyax.VidyaxError as e2:
+                ok, detail = False, f" (compile failed: {e2.msg})"
+        if ok:
+            passed += 1
+            print("  PASS native-test 1")
+        else:
+            failed += 1
+            print("  FAIL native-test 1" + detail)
+    else:
+        print("  SKIP native-test 1 (no C compiler)")
+        passed += 1
+
     # LSP smoke test: full JSON-RPC conversation over stdio
     def lsp_frame(payload):
         body = json.dumps(payload).encode()
@@ -464,7 +495,7 @@ def run_all_tests():
         print("  PASS lsp-test 1")
 
     total = (len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
-             + len(CATEGORY_CASES) + len(REPL_CASES) + 4)
+             + len(CATEGORY_CASES) + len(REPL_CASES) + 5)
     print(f"\n{passed}/{total} tests passed (each on BOTH engines)")
     if failed:
         raise SystemExit(1)
