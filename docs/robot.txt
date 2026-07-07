@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://vidyax-lang.github.io/Vidyax/sitemap.xml
