@@ -205,7 +205,9 @@ Contributions, bug reports, and feature requests are welcome. Feel free to open 
 
 ## License
 
-This project is licensed under the terms specified in the [LICENSE](https://github.com/Vidyax-Lang/Vidyax/blob/main/LICENSE) file.
+Copyright © 2026 NaDev (Daffa).
+
+This project is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](https://github.com/Vidyax-Lang/Vidyax/blob/main/LICENSE).
 
 ---
 

@@ -5,6 +5,7 @@ site_author: NaDev (Daf)
 site_url: https://vidyax-lang.github.io/Vidyax/
 repo_url: https://github.com/Vidyax-Lang/Vidyax
 repo_name: Vidyax-Lang/Vidyax
+copyright: Copyright &copy; 2026 NaDev (Daffa) — AGPL-3.0
 
 theme:
   name: material
