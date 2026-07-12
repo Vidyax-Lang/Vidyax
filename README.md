@@ -40,6 +40,7 @@ Above all, Vidyax is an **educational** language: readable enough for a beginner
 - 📦 **Modules & Packages** — `use name` splits code across files; `vidyax install user/repo` fetches shared modules.
 - 🛡️ **Sandbox & Verifier** — every compiled program is validated (opcodes, operands, jump targets) before it runs, with optional instruction/memory/time limits for untrusted code.
 - 🤖 **Built-in AI Module** — query language models directly from your code with a clean, minimal API.
+- 🤖 **Official AI Assistant** — `vidyax-coder-7b` fine-tuned on Hugging Face for generating and explaining Vidyax code.
 - 🧰 **Full Toolchain** — an interactive REPL, a line debugger (`vidyax debug`), a profiler (`vidyax profile`), a disassembler (`vidyax disasm`), a Language Server (`vidyax lsp`), and a published VS Code extension.
 
 ## Architecture Overview
@@ -185,6 +186,21 @@ python3 vidyax.py test      # tree-walker + transpiler (+ VM/native smoke tests)
 python3 tests_vm.py         # C virtual machine
 python3 fuzz.py             # differential fuzzer across engines
 ```
+
+## 🤖 AI Coding Assistant
+
+Vidyax ships with an official AI coding assistant fine-tuned specifically for the language.
+
+**Vidyax Coder 7B** is a Qwen 7B-based model trained on curated Vidyax code, capable of generating code, explaining errors, and refactoring programs with full understanding of Vidyax's unique syntax — including `go`/`wait` concurrency, the `use` module system, and the built-in `ai` module.
+
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+model = AutoModelForCausalLM.from_pretrained("NadevA23/Viydax-Coder-7b-v1")
+tokenizer = AutoTokenizer.from_pretrained("NadevA23/Viydax-Coder-7b-v1")
+```
+
+Available on [Hugging Face](https://huggingface.co/NadevA23/Viydax-Coder-7b-v1).
 
 ## VS Code Tooling
 
