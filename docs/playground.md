@@ -2,7 +2,7 @@
 
 Write and execute Vidyax code directly in your browser!
 
-<textarea id="code" style="width: 100%; height: 200px; background: #1e1e1e; color: #6a9fb5; font-family: monospace; padding: 12px; border-radius: 6px; border: 1px solid #333;" placeholder="Tulis kode .vx di sini..."></textarea>
+<textarea id="code" style="width: 100%; height: 200px; background: #1e1e1e; color: #6a9fb5; font-family: monospace; padding: 12px; border-radius: 6px; border: 1px solid #333;" placeholder="Type your .vx here..."></textarea>
 
 <button onclick="runVidyax()" style="padding: 10px 24px; background: #007acc; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; font-weight: bold;">▶ Run Code</button>
 
