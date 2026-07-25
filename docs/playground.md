@@ -1,9 +1,9 @@
 # Vidyax Playground
 
-Test and execute your Vidyax code directly in your browser.
+Test and execute your Vidyax code directly in the browser.
 
 <div style="margin-top: 20px;">
-  <textarea id="code" spellcheck="false" autocorrect="off" autocapitalize="off" style="width: 100%; height: 220px; background: #1e1e1e; color: #a6e22e; font-family: monospace; padding: 12px; border-radius: 6px; border: 1px solid #333; resize: vertical;" placeholder="// Type your .vx code here...">print "tes"</textarea>
+  <textarea id="code" spellcheck="false" autocorrect="off" autocapitalize="off" style="width: 100%; height: 220px; background: #1e1e1e; color: #a6e22e; font-family: monospace; padding: 12px; border-radius: 6px; border: 1px solid #333; resize: vertical;" placeholder="// Type your .vx code here...">print "test"</textarea>
 </div>
 
 <button onclick="runVidyax()" style="margin-top: 12px; padding: 10px 20px; background-color: #20e3b2; color: #121212; border: none; font-weight: bold; border-radius: 4px; cursor: pointer;">
@@ -15,7 +15,6 @@ Test and execute your Vidyax code directly in your browser.
 
 <script>
 (function() {
- 
   window.Module = window.Module || {
     print: function(text) {
       var out = document.getElementById('output');
@@ -26,11 +25,14 @@ Test and execute your Vidyax code directly in your browser.
     }
   };
 
-  // Hanya muat tag script jika belum pernah dimuat sama sekali
   if (!document.getElementById('vidyax-wasm-script')) {
     var script = document.createElement('script');
     script.id = 'vidyax-wasm-script';
-    script.src = 'vidyax_vm.js';
+    
+    // Automatically handles root or subfolder routing on GitHub Pages
+    var basePath = window.location.pathname.includes('/Vidyax/') ? '/Vidyax/' : './';
+    script.src = basePath + 'vidyax_vm.js';
+    
     document.head.appendChild(script);
   }
 })();
