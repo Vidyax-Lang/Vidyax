@@ -564,6 +564,53 @@ def run_all_tests():
         passed += 1
         print("  PASS install-test 1")
 
+    # forensik module smoke test (offline)
+    _forensik = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "contoh", "modul", "forensik.vx")
+    if os.path.exists(_forensik):
+        _proc_dir = os.path.dirname(_forensik)
+        _sample = os.path.join(_proc_dir, "sample_forensik.vx")
+        with open(_sample, "w") as _f:
+            _f.write('''use forensik
+teks: "foo@bar.net telp: 628123456789"
+print text(len(entitas(teks)))
+''')
+        want = ("email found: 1\nphones found: 1\nemail example: foo@bar.net\n"
+                "phone example: 628123456789\n1\n")
+        problems = []
+        for name, fn in ENGINES:
+            buf = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(buf):
+                    fn(open(_sample).read(), _proc_dir)
+                if buf.getvalue() != want:
+                    problems.append(f"{name} got {buf.getvalue()!r}")
+            except Exception as e2:
+                problems.append(f"{name} errored: {e2}")
+        vm_bin = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vm", "vxvm")
+        vxcp = None
+        if os.path.exists(vm_bin):
+            import vxc as _vxc
+            c = _vxc.compile_source(open(_sample).read(), _proc_dir)
+            vxcp = os.path.join(_proc_dir, "sample_forensik.vxc")
+            with open(vxcp, "wb") as _f:
+                _f.write(c.serialize())
+            rv = subprocess.run([vm_bin, vxcp], capture_output=True, text=True, timeout=30)
+            if rv.stdout != want:
+                problems.append(f"vm got {rv.stdout!r}")
+        if problems:
+            failed += 1
+            print("  FAIL forensik-test 1: " + " | ".join(problems))
+        else:
+            passed += 1
+            print("  PASS forensik-test 1")
+        os.remove(_sample)
+        if vxcp:
+            try:
+                os.remove(vxcp)
+            except Exception:
+                pass
+
     # native backend smoke test: compile to a binary, outputs must match
     import shutil as _sh
     if _sh.which(os.environ.get("CC", "cc")):
@@ -665,7 +712,7 @@ def run_all_tests():
         print("  PASS lsp-test 1")
 
     total = (len(CASES) + len(ERROR_CASES) + len(LINE_CASES)
-             + len(CATEGORY_CASES) + len(REPL_CASES) + len(GO_CASES) + 7)
+             + len(CATEGORY_CASES) + len(REPL_CASES) + len(GO_CASES) + 8)
     print(f"\n{passed}/{total} tests passed (each on BOTH engines)")
     if failed:
         raise SystemExit(1)

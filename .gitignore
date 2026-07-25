@@ -13,3 +13,8 @@ vm/vxvm
 .claude/
 fuzz_failures/
 vx_modules/
+tools/dataset_builder/output/emsdk/
+emsdk/
+tools/
+output/
+contoh/modul/forensik.vx
