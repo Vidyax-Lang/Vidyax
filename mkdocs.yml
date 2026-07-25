@@ -38,6 +38,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Playground: playground.md
   - Guide: GUIDE.md
   - Reference: REFERENCE.md
   - VVM Specification: VVM_SPEC.md
