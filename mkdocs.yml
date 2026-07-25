@@ -38,6 +38,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Cheatsheet: CHEATSHEET.md
   - Playground: playground.md
   - Guide: GUIDE.md
   - Reference: REFERENCE.md
