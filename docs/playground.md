@@ -1,6 +1,6 @@
 # Vidyax Interactive Playground
 
-Tulis dan jalankan kode Vidyax langsung di browser!
+Write and execute Vidyax code directly in your browser!
 
 <textarea id="code" style="width: 100%; height: 200px; background: #1e1e1e; color: #6a9fb5; font-family: monospace; padding: 12px; border-radius: 6px; border: 1px solid #333;" placeholder="Tulis kode .vx di sini..."></textarea>
 
@@ -28,7 +28,7 @@ Tulis dan jalankan kode Vidyax langsung di browser!
     if (window.Module && Module.ccall) {
       Module.ccall('run_from_js', null, ['string'], [sourceCode]);
     } else {
-      document.getElementById('output').innerText = "VM sedang dimuat, tunggu sebentar...";
+      document.getElementById('output').innerText = "Loading VM, please wait :)...";
     }
   }
 </script>
