@@ -416,15 +416,15 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[i], "--max-time") == 0 && i + 1 < argc)
             max_secs = strtod(argv[++i], NULL);
         else if (strcmp(argv[i], "--allow-net") == 0)
-            allow_net = 1;   /* opt in to network for get() / ai.ask */
+            allow_net = 1;   
         else if (strcmp(argv[i], "--allow-fs") == 0)
-            allow_fs = 1;    /* opt in to files for readfile() / writefile() */
+            allow_fs = 1;    
         else if (strcmp(argv[i], "--debug") == 0)
-            vx_debug = 1;    /* interactive line debugger (see debug.c) */
+            vx_debug = 1;   
         else if (strcmp(argv[i], "--profile") == 0)
-            vx_profile = 1;  /* per-line instruction profile (profile.c) */
+            vx_profile = 1;  
         else if (strcmp(argv[i], "--gc-stress") == 0)
-            gc_stress = 1;   /* collect at EVERY safepoint (testing) */
+            gc_stress = 1;  
         else if (strcmp(argv[i], "--gc-stats") == 0)
             gc_stats = 1;
         else if (argv[i][0] != '-')
@@ -448,7 +448,7 @@ int main(int argc, char **argv) {
 #ifdef VX_HAVE_CURL
     curl_global_init(CURL_GLOBAL_DEFAULT);
 #endif
-    VX_LOCK();          /* the interpreter lock; I/O builtins release it */
+    VX_LOCK();          
     start_clock = clock();
     run();
     VX_UNLOCK();
@@ -458,3 +458,51 @@ int main(int argc, char **argv) {
     if (vx_profile) prof_report();
     return 0;
 }
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+static void vx_wasm_reset(void) {
+    memset(&main_ctx, 0, sizeof main_ctx);
+    vx_all_ctxs = NULL;                 
+    all_objs    = NULL;                
+    consts = NULL; nconsts = 0;
+    protos = NULL; nprotos = 0;
+    next_gc = 1u << 20;
+    gc_runs = 0; peak_mem = 0; mem_used = 0; instr_count = 0;
+}
+
+
+EMSCRIPTEN_KEEPALIVE
+int vx_run_program(const char *vxc_path,
+                    uint64_t max_instr_limit, double max_secs_limit,
+                    int net_allowed, int fs_allowed) {
+    vx_wasm_reset();
+
+    vx_ctx = &main_ctx;
+    jmp_armed = 1;
+    if (setjmp(err_jmp)) {
+      
+        fprintf(stderr, "[Vidyax] %s\n", errmsg);
+        fflush(stderr);
+        return 65; 
+    }
+
+    max_instr = max_instr_limit;
+    max_secs  = max_secs_limit;
+    allow_net = net_allowed;
+    allow_fs  = fs_allowed;
+
+    load(vxc_path);
+    if (nprotos == 0) { fprintf(stderr, "[Vidyax] empty program\n"); return 1; }
+    verify();
+
+    VX_LOCK();
+    start_clock = clock();
+    run();             
+    VX_UNLOCK();
+
+    fflush(stdout);
+    fflush(stderr);
+    return vx_ctx->failed ? 70 : 0;
+}
+#endif
