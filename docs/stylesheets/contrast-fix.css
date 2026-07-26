@@ -1,0 +1,8 @@
+
+[data-md-color-scheme="slate"] .c1,
+[data-md-color-scheme="default"] .c1 {
+  color: #6c7a89 !important; 
+}
+.md-footer-meta, .md-copyright {
+  color: rgba(255,255,255,0.8) !important;
+}

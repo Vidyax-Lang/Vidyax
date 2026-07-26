@@ -11,6 +11,7 @@ theme:
   name: material
   custom_dir: overrides
   language: en
+  font: false
   palette:
     - scheme: default
       primary: deep purple
@@ -57,8 +58,12 @@ markdown_extensions:
   - tables
   - toc:
       permalink: true
+
 extra_javascript:
   - javascripts/a11y-fix.js
+
+extra_css:
+  - stylesheets/contrast-fix.css
 
 extra:
   social:
