@@ -13,10 +13,16 @@ Test and execute your Vidyax code directly in the browser.
 <h3 style="margin-top: 24px;">Output Console:</h3>
 <pre id="output" style="background: #121212; color: #00ff66; padding: 16px; border-radius: 6px; min-height: 80px; font-family: monospace; border: 1px solid #222; white-space: pre-wrap;"></pre>
 
-<script src="assets/js/pyodide-bridge.js"></script>
 <script>
 (function () {
-  var basePath = window.location.pathname.includes('/Vidyax/') ? '/Vidyax/' : './';
+  var basePath = window.location.pathname.includes('/Vidyax/') ? '/Vidyax/' : '/';
+
+  if (!document.getElementById('vidyax-bridge-script')) {
+    var bridge = document.createElement('script');
+    bridge.id = 'vidyax-bridge-script';
+    bridge.src = basePath + 'assets/js/pyodide-bridge.js';
+    document.head.appendChild(bridge);
+  }
 
   if (!window.VidyaxModule) {
     var script = document.createElement('script');

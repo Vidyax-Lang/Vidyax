@@ -8,7 +8,7 @@
   let pyodideReadyPromise = null;
 
   function basePath() {
-    return window.location.pathname.includes('/Vidyax/') ? '/Vidyax/' : './';
+    return window.location.pathname.includes('/Vidyax/') ? '/Vidyax/' : '/';
   }
 
   async function initPyodide(onStatus) {
@@ -85,8 +85,6 @@ except Exception as e:
       if (error) {
         return { ok: false, error: String(error) };
       }
-      // pyodide bytes -> JS: pyBytes is a Uint8Array-backed PyProxy or
-      // already a Uint8Array depending on version; normalize both.
       const bytes = pyBytes instanceof Uint8Array
         ? pyBytes
         : new Uint8Array(pyBytes.toJs ? pyBytes.toJs() : pyBytes);
