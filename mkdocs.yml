@@ -57,6 +57,8 @@ markdown_extensions:
   - tables
   - toc:
       permalink: true
+extra_javascript:
+  - javascripts/a11y-fix.js
 
 extra:
   social:
