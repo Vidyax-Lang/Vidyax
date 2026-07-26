@@ -1,0 +1,18 @@
+# Vidyax
+
+> Vidyax (`.vx`) is a programming language designed to make writing code feel like writing plain instructions. It has its own lexer, parser, compiler, bytecode format (VIR/.vxc), and a C virtual machine (VVM) — not just a wrapper over Python. Two engines (a transpiler-to-Python and a tree-walking interpreter) share one runtime and are tested to produce identical output, with a bytecode VM and native backend as faster execution paths.
+
+Vidyax's syntax favors plain-English instructions over symbolic operators: assignment is `name: value` (not `=`), loops use `rpt N` instead of `while`, and there are no f-strings. It has built-in support for AI calls (`ai.ask`), sandboxed agents, HTTP fetching (`get`), and lightweight concurrency (`go`/`wait`) — all running consistently across all four execution engines (tree-walker, transpiler, VVM, native).
+
+## Docs
+
+- [Guide](https://vidyax-lang.github.io/Vidyax/GUIDE/): Learn Vidyax from scratch — variables, conditionals, loops, functions, error handling, input, `get`, built-in AI and agents, lists/text, multi-file projects (`use`), concurrency (`go`/`wait`), and compiling to bytecode/native.
+- [Reference](https://vidyax-lang.github.io/Vidyax/REFERENCE/): Complete language reference (v1.1) — execution model, syntax, value types, operators, built-in functions, the `ai` module, CLI commands, sandboxing, agents, modules/packages, the language server, and the full error message catalog.
+- [Cheatsheet](https://vidyax-lang.github.io/Vidyax/CHEATSHEET/): A compact (~1.2k token) syntax summary meant to be pasted into an LLM's system prompt so it can write correct Vidyax code. Benchmarked: with only this sheet in context, tested models passed 9/12 and 9/10 execution-verified tasks.
+- [VVM Specification](https://vidyax-lang.github.io/Vidyax/VVM_SPEC/): Architecture spec (v1.1) for the Vidyax Virtual Machine — the VIR bytecode format, value model, scoping/closures, AI sandboxing, mark-sweep garbage collection, milestone status, and self-hosting prerequisites.
+- [Concurrency](https://vidyax-lang.github.io/Vidyax/CONCURRENCY/): Design doc for Vidyax's `go`/`wait`/`agent` concurrency model — goals, constraints (four-engine parity, beginner-first, AI-native I/O overlap), and shipped implementation status across all engines.
+- [Playground](https://vidyax-lang.github.io/Vidyax/playground/): Try Vidyax directly in the browser.
+
+## Source
+
+- [GitHub repository](https://github.com/Vidyax-Lang/Vidyax): Source code, compiler, VM, and issue tracker. License: AGPL-3.0.
