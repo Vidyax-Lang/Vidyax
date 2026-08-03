@@ -172,3 +172,6 @@ pemula, paket komunitas). Ide teknis tersisa ada di bawah.
 - Fungsi + rekursi, semua loop (rpt, for, break, continue).
 - 25/25 test lulus (tests.py).
 - Extension VS Code: syntax highlighting + auto-indent.
+
+### Base Roadmap 
+- Comming soon
