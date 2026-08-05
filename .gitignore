@@ -27,4 +27,5 @@ test_tools.vx
 stress_test.vx
 swarm_demo.vx
 company_data.txt
+qwen2-0.5b.gguf
 
