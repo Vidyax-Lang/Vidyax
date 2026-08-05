@@ -1,0 +1,22 @@
+writefile("/tmp/mmap_test.txt", "STRESS TEST DATA")
+
+@tool(permissions="read")
+func mmap_test():
+    mmap_read("/tmp/mmap_test.txt")
+
+@tool(permissions="mutate")
+func shm_test():
+    shm_write("stress_chan", "Data")
+
+@tool(permissions="none")
+func calc_test(val):
+    safe_calc(val)
+
+print "Memulai stress test (100.000 iterasi)..."
+
+rpt 100000:
+    mmap_test()
+    shm_test()
+    calc_test(42.5)
+
+print "Stress test selesai tanpa crash!"

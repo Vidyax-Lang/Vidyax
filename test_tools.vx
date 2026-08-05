@@ -1,0 +1,22 @@
+# Tulis file buat di mmap
+writefile("/tmp/mmap_test.txt", "Halo dari Vidyax Mmap!")
+
+@tool(permissions="read")
+func mmap_test():
+    isi: mmap_read("/tmp/mmap_test.txt")
+    print "Isi mmap: " + isi
+
+@tool(permissions="mutate")
+func shm_test():
+    # Write to shm channel "test_chan"
+    shm_write("test_chan", "Halo dari Vidyax SHM!")
+    print "SHM Write sukses!"
+
+@tool(permissions="none")
+func calc_test():
+    res: safe_calc(42)
+    print "Hasil SafeCalc (42 * golden ratio): " + text(res)
+
+mmap_test()
+shm_test()
+calc_test()

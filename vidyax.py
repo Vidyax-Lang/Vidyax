@@ -45,7 +45,7 @@ KEYWORDS = {
 TWO_CHAR_OPS = {"==", "!=", "<=", ">="}
 ONE_CHAR_OPS = {
     ":", "(", ")", "[", "]", ",", ".",
-    "+", "-", "*", "/", "%", "<", ">", "=",
+    "+", "-", "*", "/", "%", "<", ">", "=", "@",
 }
 
 
@@ -247,7 +247,9 @@ class RepeatN(Node):
 class ForEach(Node):
     def __init__(self, var, iterable, body): self.var = var; self.iterable = iterable; self.body = body
 class FuncDef(Node):
-    def __init__(self, name, params, body): self.name = name; self.params = params; self.body = body
+    def __init__(self, name, params, body, is_tool=False, tool_perms=None):
+        self.name = name; self.params = params; self.body = body
+        self.is_tool = is_tool; self.tool_perms = tool_perms
 class Return(Node):
     def __init__(self, value): self.value = value
 class Break(Node): pass
@@ -368,6 +370,8 @@ class Parser:
 
     def _statement(self):
         t = self.peek()
+        if t.kind == "OP" and t.value == "@":
+            return self.stmt_decorator()
         if t.kind == "KEYWORD":
             if t.value == "print":    return self.stmt_print()
             if t.value == "if":       return self.stmt_if()
@@ -439,6 +443,41 @@ class Parser:
         body = self.block()
         self.loop_depth -= 1
         return ForEach(var, it, body)
+
+    def stmt_decorator(self):
+        line = self.peek().line
+        self.eat("OP", "@")
+        dec = self.eat("NAME")
+        if dec.value != "tool":
+            raise VidyaxError("only @tool decorator is supported", dec.line)
+        self.eat("OP", "(")
+        param_name = self.eat("NAME")
+        if param_name.value != "permissions":
+            raise VidyaxError("expected 'permissions' parameter", param_name.line)
+        self.eat("OP", "=")
+        perms_tok = self.eat("STRING")
+        self.eat("OP", ")")
+        self.eat("NEWLINE")
+        
+        f = self.stmt_func()
+        f.is_tool = True
+        f.tool_perms = perms_tok.value
+        
+        # Static Validation: M-MUTATE-VIOLATION
+        def check_ast(node):
+            if type(node).__name__ == "Call" and type(node.callee).__name__ == "Var":
+                if node.callee.name in ("writefile", "sandbox"): # mutating operations
+                    if "mutate" not in f.tool_perms:
+                        raise VidyaxError(f"REJECT: tool '{f.name}' attempts to mutate memory (calls {node.callee.name}) without 'mutate' permission (M-MUTATE-VIOLATION)", line)
+            if hasattr(node, "__dict__"):
+                for v in node.__dict__.values():
+                    if isinstance(v, Node): check_ast(v)
+                    elif isinstance(v, list):
+                        for item in v:
+                            if isinstance(item, Node): check_ast(item)
+        for stmt in f.body:
+            check_ast(stmt)
+        return f
 
     def stmt_func(self):
         self.eat("KEYWORD", "func")
@@ -1577,6 +1616,28 @@ def _b_find(x, item):
         return x.find(_vstr(item))
     raise _VidyaxRuntime("find() needs a list or text")
 
+# --- Standard Library Tools (Fase F Stub for Python walk engine) ---
+def _b_mmap_read(path):
+    _perm_fs()
+    with open(path, "r") as f:
+        return f.read()
+
+def _b_shm_write(chan, msg):
+    if _S_N_CUBICLE:
+        raise _VidyaxRuntime("M-MUTATE-VIOLATION: agent s_n cubicle cannot mutate Host OS SHM")
+    # Stub: writing to shm not fully emulated in Python walk engine
+    return 1
+
+def _b_safe_calc(val):
+    if not isinstance(val, (int, float)):
+        raise _VidyaxRuntime("safe_calc() needs a number")
+    if _math.isinf(val) or _math.isnan(val):
+        raise _VidyaxRuntime("safe_calc: Knaster-Tarski bound violation (infinity/NaN)")
+    res = val * 1.61803398875
+    if res > 1e12 or res < -1e12:
+        raise _VidyaxRuntime("safe_calc: Divergence detected, execution halted")
+    return res
+
 # --- sandbox permissions (per-thread; capability model) --------------
 # The Python engines start with everything allowed (like today); the C
 # engines start from the --allow-* flags. A `sandbox deny ...:` block can
@@ -1740,6 +1801,9 @@ BUILTINS = {
     "slice": _RT_NS["_b_slice"],
     "sleep": _RT_NS["_b_sleep"], "now": _RT_NS["_b_now"],
     "wait": _RT_NS["_b_wait"],
+    "mmap_read": _RT_NS["_b_mmap_read"],
+    "shm_write": _RT_NS["_b_shm_write"],
+    "safe_calc": _RT_NS["_b_safe_calc"],
 }
 BUILTIN_NAMES = set(BUILTINS)
 

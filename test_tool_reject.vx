@@ -1,0 +1,3 @@
+@tool(permissions="read")
+func bad_tool(path):
+    writefile(path, "bad")

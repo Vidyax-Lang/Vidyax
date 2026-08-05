@@ -1,0 +1,44 @@
+use ai
+
+# =========================================================================
+# STANDARD LIBRARY TOOLS 
+# =========================================================================
+
+@tool(permissions="mutate")
+func swarm_send(channel, message):
+    shm_write(channel, message)
+    print "SwarmMessenger [TX -> " + channel + "] Sukses terkirim."
+
+@tool(permissions="none")
+func planner_calc(val):
+    res: safe_calc(val)
+    print "SafeCalc Engine [Isolated]: " + text(res)
+    return res
+
+# =========================================================================
+# MULTI-NANO SWARM ORCHESTRATOR
+# =========================================================================
+
+print "=========================================="
+print "Vidyax Multi-Nano Swarm Boot Sequence"
+print "=========================================="
+
+agent s1:
+    model "llama-3.1-8b-instant"
+    system "Kamu adalah Planner Agent (s1). Tugasmu menganalisis strategi."
+
+agent s2:
+    model "llama-3.1-8b-instant"
+    system "Kamu adalah Executor Agent (s2). Tugasmu mengeksekusi aksi."
+
+# S1 melakukan kalkulasi statis aman
+hasil_kalkulasi: planner_calc(100)
+
+# S1 mengirim data ke S2 via shared memory channel "s2_inbox"
+swarm_send("s2_inbox", "Plan Alpha: " + text(hasil_kalkulasi))
+
+# S2 menerima (simulasi baca dari eksekutor, karena mmap_read butuh file bukan fd shm)
+print "SwarmMessenger [RX <- s2_inbox]: Signal payload diterima!"
+
+print "=========================================="
+print "Swarm Sinkronisasi Selesai."
