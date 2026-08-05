@@ -1638,6 +1638,17 @@ def _b_safe_calc(val):
         raise _VidyaxRuntime("safe_calc: Divergence detected, execution halted")
     return res
 
+# --- Native C Model Bridge (Fase G Stub for Python walk engine) ---
+def _b_model_load(path):
+    _perm_fs()
+    # Stub: return a dummy handle
+    return 1337
+
+def _b_model_infer(handle, prompt):
+    if _S_N_CUBICLE:
+        pass # isolation check
+    return "[LLM Python Stub Inference] Response for: '" + str(prompt) + "'"
+
 # --- sandbox permissions (per-thread; capability model) --------------
 # The Python engines start with everything allowed (like today); the C
 # engines start from the --allow-* flags. A `sandbox deny ...:` block can
@@ -1804,6 +1815,8 @@ BUILTINS = {
     "mmap_read": _RT_NS["_b_mmap_read"],
     "shm_write": _RT_NS["_b_shm_write"],
     "safe_calc": _RT_NS["_b_safe_calc"],
+    "model_load": _RT_NS["_b_model_load"],
+    "model_infer": _RT_NS["_b_model_infer"],
 }
 BUILTIN_NAMES = set(BUILTINS)
 

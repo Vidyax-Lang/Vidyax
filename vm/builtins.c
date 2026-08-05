@@ -3,6 +3,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include "vx_model_bridge.h"
 
 /* ---- builtins (mirror vidyax.py RUNTIME semantics) ---- */
 static Value b_len(int argc, Value *a) {
@@ -577,6 +578,9 @@ Builtin BUILTINS[] = {
     {"mmap_read", b_mmap_read},
     {"shm_write", b_shm_write},
     {"safe_calc", b_safe_calc},
+    /* Native C Model Bridge (Fase G) */
+    {"model_load", b_model_load},
+    {"model_infer", b_model_infer},
 };
 const size_t NBUILTINS = sizeof BUILTINS / sizeof BUILTINS[0];
 
