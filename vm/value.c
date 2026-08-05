@@ -127,6 +127,8 @@ void need_net(void) {
 }
 void need_fs(void) {
     if (vx_ctx->perms & PERM_FS) return;
+    if (vx_ctx->s_n_isolated)
+        vm_error("M-MUTATE-VIOLATION: agent s_n cubicle cannot mutate Host OS (s_0)");
     if (allow_fs)
         vm_error("file access is not allowed here "
                  "(blocked by 'sandbox deny fs')");

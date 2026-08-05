@@ -1299,19 +1299,33 @@ class _Agent:
         if system is not None:
             self._ai.system(_vstr(system))
         self._history = []
+        # Fase F: Scoping Cubicle (s_n) isolation
+        # Ensures agent state is strictly scoped and cannot mutate Host OS (s_0)
+        self.scope = "s_n"
+
     def __call__(self, *args):
         if len(args) != 1:
             raise _VidyaxRuntime(
                 "agent '%s' needs 1 message, got %d" % (self._name, len(args)))
-        self._history.append({"role": "user", "content": _vstr(args[0])})
-        messages = []
-        if self._ai.system_prompt:
-            messages.append({"role": "system",
-                             "content": self._ai.system_prompt})
-        messages.extend(self._history)
-        reply = self._ai._ask_messages(messages)
-        self._history.append({"role": "assistant", "content": reply})
-        return reply
+        
+        # Fase F: Enforce s_n Scoping Cubicle
+        global _S_N_CUBICLE
+        old_s_n = _S_N_CUBICLE
+        _S_N_CUBICLE = True
+        old_perms = _sandbox_enter(["fs"])
+        try:
+            self._history.append({"role": "user", "content": _vstr(args[0])})
+            messages = []
+            if self._ai.system_prompt:
+                messages.append({"role": "system",
+                                 "content": self._ai.system_prompt})
+            messages.extend(self._history)
+            reply = self._ai._ask_messages(messages)
+            self._history.append({"role": "assistant", "content": reply})
+            return reply
+        finally:
+            _sandbox_exit(old_perms)
+            _S_N_CUBICLE = old_s_n
 
 def _member(o, name):
     # Member-access policy, shared by both engines:
@@ -1568,6 +1582,7 @@ def _b_find(x, item):
 # engines start from the --allow-* flags. A `sandbox deny ...:` block can
 # only REDUCE the set; tasks inherit the spawner's set at `go` time.
 _PERMS = _thr.local()
+_S_N_CUBICLE = False
 
 def _cur_perms():
     p = getattr(_PERMS, "v", None)
@@ -1594,6 +1609,9 @@ def _perm_net():
 
 def _perm_fs():
     if not _cur_perms()["fs"]:
+        global _S_N_CUBICLE
+        if _S_N_CUBICLE:
+            raise _VidyaxRuntime("M-MUTATE-VIOLATION: agent s_n cubicle cannot mutate Host OS (s_0)")
         raise _VidyaxRuntime("file access is not allowed here "
                              "(blocked by 'sandbox deny fs')")
 

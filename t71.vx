@@ -1,0 +1,6 @@
+sandbox deny fs:
+    try:
+        writefile("/tmp/x.txt", "a")
+    catch err:
+        print err
+print "hidup"

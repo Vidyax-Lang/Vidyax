@@ -120,7 +120,12 @@ typedef struct { Obj h; OAI *self; int method; } OBound;
 
 /* a stateful AI agent (Phase E): fixed config in `ai`, plus a running
  * conversation `history` (alternating OStr: user, assistant, user, ...) */
-typedef struct { Obj h; OStr *name; OAI *ai; OList *history; } OAgent;
+typedef struct { 
+    Obj h; OStr *name; OAI *ai; OList *history; 
+    /* Fase F: Scoping Cubicle (s_n).
+     * If 1, agent state is strictly scoped and cannot mutate Host OS (s_0). */
+    int s_n_isolated; 
+} OAgent;
 
 typedef Value (*BuiltinFn)(int argc, Value *args);
 typedef struct { const char *name; BuiltinFn fn; } Builtin;
@@ -166,6 +171,8 @@ typedef struct VmCtx {          /* members are x_-prefixed: the macros
     SboxEntry x_sbox[SBOX_MAX]; int x_nsbox;   /* active sandbox blocks */
     int     is_task;            /* uncaught error: task records, main dies */
     int     failed;             /* set when a task ends with an error */
+    /* Fase F: Scoping Cubicle (s_n) flag for VmCtx */
+    int s_n_isolated;
     struct VmCtx *next;         /* GC root registry (vx_all_ctxs) */
 } VmCtx;
 

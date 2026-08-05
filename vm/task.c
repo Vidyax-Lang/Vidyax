@@ -139,6 +139,16 @@ void task_spawn(int argc) {
     stack[sp++] = v;   /* always fits: we just freed argc+1 slots */
 
     t->started = 1;
+    /* Fase F: Optimasi Zero-Copy Inter-Process Communication (IPC).
+     * Jika task adalah agen dalam mode Fast/Native, mekanisme pertukaran
+     * konteks menggunakan POSIX Shared Memory (/dev/shm) agar latensi tetap
+     * sub-milidetik dan RAM terjaga di bawah batas 30%.
+     * (Implementasi detail SHM akan diletakkan di sini untuk menggantikan pthreads)
+     */
+    if (callee.t == V_AGENT && t->ctx->s_n_isolated) {
+        /* Placeholder untuk mekanisme shm_open / mmap antar-agen s_n */
+    }
+
     if (pthread_create(&t->thread, NULL, task_worker, t) != 0) {
         t->started = 0;
         vm_error("cannot start task");

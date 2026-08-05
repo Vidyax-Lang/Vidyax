@@ -291,6 +291,7 @@ OAgent *new_agent(OStr *name, Value model, Value system) {
     a->name = name;
     a->ai = new_ai();
     a->history = new_list(4);
+    a->s_n_isolated = 1; /* Fase F: Scoping Cubicle */
     if (model.t != V_NULL)  ai_open(a->ai, vstr(model)->chars);
     if (system.t != V_NULL) a->ai->system_prompt = vstr(system);
     return a;
@@ -298,8 +299,16 @@ OAgent *new_agent(OStr *name, Value model, Value system) {
 
 Value agent_ask(OAgent *a, OStr *prompt) {
     need_net();
+    /* Fase F: Enforce s_n Scoping Cubicle by isolating from fs */
+    uint8_t old_perms = vx_ctx->perms;
+    int old_isolated = vx_ctx->s_n_isolated;
+    if (a->s_n_isolated) {
+        vx_ctx->perms &= ~PERM_FS; /* Clear the FS bit to deny access */
+        vx_ctx->s_n_isolated = 1;
+    }
 #ifndef VX_HAVE_CURL
     (void)a; (void)prompt;
+    vx_ctx->perms = old_perms;
     vm_error("agents need libcurl (rebuild vxvm with libcurl available)");
     return vnull();
 #else
@@ -322,6 +331,8 @@ Value agent_ask(OAgent *a, OStr *prompt) {
     Value reply = ai_post(a->ai->provider, &body);
     list_push(a->history, vstr_o(prompt));
     list_push(a->history, reply);
+    vx_ctx->perms = old_perms; /* Fase F: Restore permissions */
+    vx_ctx->s_n_isolated = old_isolated;
     return reply;
 #endif
 }
