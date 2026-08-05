@@ -1,5 +1,5 @@
 CC      ?= cc
-CFLAGS  ?= -O2 -Wall -Wextra
+CFLAGS  ?= -O2 -Wall -Wextra -DVXVM_RUNTIME
 LDFLAGS ?= -lm -lpthread
 
 SRCS := vm.c value.c gc.c net.c builtins.c loader.c debug.c profile.c task.c vx_model_bridge.c

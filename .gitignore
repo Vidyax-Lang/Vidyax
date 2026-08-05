@@ -20,3 +20,11 @@ output/
 contoh/modul/forensik.vx
 .continue/
 test_model.vx
+# Output Executables & Test Scripts
+vidyax_cli
+re_cli
+test_tools.vx
+stress_test.vx
+swarm_demo.vx
+company_data.txt
+

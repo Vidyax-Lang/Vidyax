@@ -45,6 +45,7 @@ char* vx_model_infer_text(void *handle, const char *prompt) {
 /* =========================================================================
  * VM Builtin Bindings for Vidyax Native
  * ========================================================================= */
+#ifdef VXVM_RUNTIME
 
 Value b_model_load(int argc, Value *a) {
     if (argc != 1 || a[0].t != V_STR) vm_error("model_load() needs a file path");
@@ -78,3 +79,4 @@ Value b_model_infer(int argc, Value *a) {
     
     return vstr_o(ret);
 }
+#endif
