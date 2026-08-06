@@ -1,0 +1,11 @@
+func assert(condition, msg):
+    if not condition:
+        print "[FAIL] Assertion failed: " + msg
+        return false
+    return true
+
+func assert_eq(a, b):
+    if a != b:
+        print "[FAIL] Expected " + text(a) + " == " + text(b)
+        return false
+    return true

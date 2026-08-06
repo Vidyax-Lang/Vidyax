@@ -561,6 +561,9 @@ class Parser:
     def stmt_import(self):
         self.eat("KEYWORD", "use")
         name = self.eat("NAME").value
+        while self.at("OP", "/"):
+            self.eat("OP", "/")
+            name += "/" + self.eat("NAME").value
         self.eat("NEWLINE")
         return Import(name)
 
@@ -1062,9 +1065,11 @@ def type_check(program):
 # --- front-end phase boundaries: attach an error category ---
 def _module_paths(base_dir):
     """Where `use X` looks for X.vx, in order."""
+    vidyax_dir = os.path.dirname(os.path.abspath(__file__))
     return [base_dir,
             os.path.join(base_dir, "vx_modules"),
-            os.path.join(os.path.expanduser("~"), ".vidyax", "modules")]
+            os.path.join(os.path.expanduser("~"), ".vidyax", "modules"),
+            vidyax_dir]  # standard library fallback
 
 
 def expand_uses(ast, base_dir, _loading=None, _loaded=None):
@@ -1087,9 +1092,32 @@ def expand_uses(ast, base_dir, _loading=None, _loaded=None):
             continue
         path = None
         for d in _module_paths(base_dir):
-            cand = os.path.join(d, s.name + ".vx")
-            if os.path.isfile(cand):
-                path = os.path.abspath(cand)
+            cand_dir = os.path.join(d, s.name)
+            cand_file = os.path.join(d, s.name + ".vx")
+            
+            # 1. Check for package directory (Package Manager v2)
+            if os.path.isdir(cand_dir):
+                json_path = os.path.join(cand_dir, "vx.json")
+                if os.path.isfile(json_path):
+                    try:
+                        with open(json_path, encoding="utf-8") as f:
+                            pkg = json.load(f)
+                            main_file = pkg.get("main", "main.vx")
+                            path = os.path.abspath(os.path.join(cand_dir, main_file))
+                            if os.path.isfile(path):
+                                break
+                    except Exception:
+                        pass
+                
+                # Fallback to main.vx if vx.json is missing or invalid
+                fallback = os.path.abspath(os.path.join(cand_dir, "main.vx"))
+                if os.path.isfile(fallback):
+                    path = fallback
+                    break
+
+            # 2. Check for single file module (v1)
+            if os.path.isfile(cand_file):
+                path = os.path.abspath(cand_file)
                 break
         if path is None:
             raise VidyaxError(
@@ -2147,40 +2175,151 @@ def _install_urls(spec):
     return repo, [f"{base}/{r}/{repo}.vx" for r in refs]
 
 
+def _download_and_extract_zip(url, target_dir):
+    import urllib.request, urllib.error
+    import zipfile, io
+    req = urllib.request.Request(url, headers={"User-Agent": "vidyax-install"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        z = zipfile.ZipFile(io.BytesIO(r.read()))
+        root_folder = z.namelist()[0].split('/')[0]
+        os.makedirs(target_dir, exist_ok=True)
+        for member in z.namelist():
+            if member.startswith(root_folder + '/'):
+                rel_path = member[len(root_folder) + 1:]
+                if not rel_path: continue
+                t_path = os.path.join(target_dir, rel_path)
+                if member.endswith('/'):
+                    os.makedirs(t_path, exist_ok=True)
+                else:
+                    os.makedirs(os.path.dirname(t_path), exist_ok=True)
+                    with z.open(member) as src, open(t_path, "wb") as tgt:
+                        tgt.write(src.read())
+
+
 def install_module(spec, dest=None):
-    """Download a single-file Vidyax module into vx_modules/. The file is
-    parsed before it's saved, so a broken download never lands on disk."""
+    """Download a package or module into vx_modules/. Supports vx.json dependencies and lockfile generation."""
     import urllib.request
     import urllib.error
-    name, urls = _install_urls(spec)
     dest = dest or os.path.join(os.getcwd(), "vx_modules")
     os.makedirs(dest, exist_ok=True)
-    last_err = None
-    for url in urls:
+    
+    lockfile_path = os.path.join(os.getcwd(), "vx.lock")
+    lock_data = {}
+    if os.path.isfile(lockfile_path):
         try:
-            req = urllib.request.Request(
-                url, headers={"User-Agent": "vidyax-install"})
-            with urllib.request.urlopen(req, timeout=30) as r:
-                data = r.read().decode("utf-8")
-        except urllib.error.HTTPError as e:
-            last_err = f"HTTP {e.code} for {url}"
-            continue
-        except urllib.error.URLError as e:
-            last_err = f"cannot reach {url} ({e.reason})"
-            continue
-        except OSError as e:
-            last_err = str(e)
-            continue
-        try:
-            Parser(lex(data)).parse()          # validate before saving
-        except VidyaxError as e:
-            raise VidyaxError(f"downloaded module '{name}' has an error: "
-                              f"{e.msg}")
-        out = os.path.join(dest, name + ".vx")
-        with open(out, "w", encoding="utf-8") as f:
-            f.write(data)
-        return name, out
-    raise VidyaxError(f"install failed for '{spec}': {last_err}")
+            with open(lockfile_path, encoding="utf-8") as f:
+                lock_data = json.load(f)
+        except Exception:
+            pass
+
+    installed_in_this_run = set()
+    
+    def _install_recursive(pkg_spec):
+        if pkg_spec in installed_in_this_run:
+            return None, None
+            
+        if pkg_spec.startswith(("http://", "https://", "file://")):
+            # Fallback to single file v1 fetch for direct URLs
+            name, urls = _install_urls(pkg_spec)
+            last_err = None
+            for url in urls:
+                try:
+                    req = urllib.request.Request(url, headers={"User-Agent": "vidyax-install"})
+                    with urllib.request.urlopen(req, timeout=30) as r:
+                        data = r.read().decode("utf-8")
+                    Parser(lex(data)).parse()
+                    out = os.path.join(dest, name + ".vx")
+                    with open(out, "w", encoding="utf-8") as f:
+                        f.write(data)
+                    installed_in_this_run.add(pkg_spec)
+                    return name, out
+                except Exception as e:
+                    last_err = str(e)
+            raise VidyaxError(f"install failed for '{pkg_spec}': {last_err}")
+
+        ref = "main"
+        ref_given = False
+        spec_clean = pkg_spec
+        if "@" in spec_clean:
+            spec_clean, ref = spec_clean.rsplit("@", 1)
+            ref_given = True
+            
+        parts = spec_clean.split("/")
+        if len(parts) != 2:
+            raise VidyaxError("install needs 'user/repo[@ref]' or a URL")
+            
+        user, repo = parts[0], parts[1]
+        name = repo
+        target_dir = os.path.join(dest, name)
+        
+        refs_to_try = [ref] if ref_given else ["main", "master"]
+        resolved_url = None
+        
+        for r in refs_to_try:
+            zip_url = f"https://github.com/{user}/{repo}/archive/refs/tags/{r}.zip" if r != "main" and r != "master" else f"https://github.com/{user}/{repo}/archive/{r}.zip"
+            try:
+                _download_and_extract_zip(zip_url, target_dir)
+                resolved_url = zip_url
+                break
+            except Exception:
+                fallback_url = f"https://github.com/{user}/{repo}/archive/{r}.zip"
+                try:
+                    _download_and_extract_zip(fallback_url, target_dir)
+                    resolved_url = fallback_url
+                    break
+                except Exception:
+                    continue
+                    
+        if not resolved_url:
+            print(f"[Vidyax] ZIP download failed for {pkg_spec}, falling back to v1 single file...")
+            name, urls = _install_urls(pkg_spec)
+            for url in urls:
+                try:
+                    req = urllib.request.Request(url, headers={"User-Agent": "vidyax-install"})
+                    with urllib.request.urlopen(req, timeout=30) as r:
+                        data = r.read().decode("utf-8")
+                    Parser(lex(data)).parse()
+                    out = os.path.join(dest, name + ".vx")
+                    with open(out, "w", encoding="utf-8") as f:
+                        f.write(data)
+                    installed_in_this_run.add(pkg_spec)
+                    return name, out
+                except Exception:
+                    pass
+            raise VidyaxError(f"install failed for '{pkg_spec}'")
+        
+        installed_in_this_run.add(pkg_spec)
+        
+        # Check vx.json for dependencies
+        json_path = os.path.join(target_dir, "vx.json")
+        if os.path.isfile(json_path):
+            with open(json_path, encoding="utf-8") as f:
+                pkg = json.load(f)
+            
+            if "name" in pkg and pkg["name"] != repo:
+                name = pkg["name"]
+                new_target = os.path.join(dest, name)
+                # rename directory to match package name
+                if os.path.exists(new_target):
+                    import shutil
+                    shutil.rmtree(new_target)
+                os.rename(target_dir, new_target)
+                target_dir = new_target
+                
+            deps = pkg.get("dependencies", {})
+            for dep_name, dep_spec in deps.items():
+                print(f"[Vidyax] resolving dependency: {dep_name} -> {dep_spec}")
+                _install_recursive(dep_spec)
+                
+        lock_data[name] = {"resolved": resolved_url, "spec": pkg_spec}
+        return name, target_dir
+
+    main_name, main_out = _install_recursive(spec)
+    
+    with open(lockfile_path, "w", encoding="utf-8") as f:
+        json.dump(lock_data, f, indent=2)
+        
+    return main_name, main_out
 
 
 # =====================================================================

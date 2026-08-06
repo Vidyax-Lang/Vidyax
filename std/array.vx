@@ -1,0 +1,18 @@
+func map(lst, fn):
+    res : []
+    for x in lst:
+        push(res, fn(x))
+    return res
+
+func filter(lst, fn):
+    res : []
+    for x in lst:
+        if fn(x):
+            push(res, x)
+    return res
+
+func reduce(lst, fn, init):
+    res : init
+    for x in lst:
+        res : fn(res, x)
+    return res

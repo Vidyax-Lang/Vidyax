@@ -1,0 +1,18 @@
+PI : 3.141592653589793
+E : 2.718281828459045
+
+func factorial(n):
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+func gcd(a, b):
+    if b == 0:
+        return abs(a)
+    return gcd(b, a % b)
+
+func deg2rad(deg):
+    return deg * PI / 180.0
+
+func rad2deg(rad):
+    return rad * 180.0 / PI
