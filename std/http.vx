@@ -1,0 +1,4 @@
+# Standard HTTP Module
+
+func fetch(url):
+    return get(url)

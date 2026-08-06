@@ -2499,7 +2499,10 @@ def main():
             "  vidyax walk <file.vx>      run with the tree-walker (debug)\n"
             "  vidyax check <file.vx|->    static check only, JSON errors (- = stdin)\n"
             "  vidyax lsp                 start the Language Server (stdio)\n"
+            "  vidyax init                create a new vx.json file in the current directory\n"
             "  vidyax install <user/repo> download a module into vx_modules/\n"
+            "  vidyax list                list all installed modules in vx_modules/\n"
+            "  vidyax remove <pkg>        remove a module and update vx.lock\n"
             "  vidyax test                run built-in tests (both engines)\n"
         )
         return
@@ -2601,6 +2604,66 @@ def main():
                 print(e.show()); failed = True
         if failed:
             sys.exit(1)
+    elif cmd == "init":
+        import json
+        if os.path.exists("vx.json"):
+            print("[Vidyax] vx.json already exists")
+            sys.exit(1)
+        name = os.path.basename(os.getcwd())
+        data = {
+            "name": name,
+            "version": "0.1.0",
+            "main": "main.vx",
+            "dependencies": {}
+        }
+        with open("vx.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        if not os.path.exists("main.vx"):
+            with open("main.vx", "w", encoding="utf-8") as f:
+                f.write('print "Hello from ' + name + '!"\n')
+        print("[Vidyax] Initialized vx.json and main.vx")
+    elif cmd == "list":
+        dest = os.path.join(os.getcwd(), "vx_modules")
+        if not os.path.exists(dest) or not os.listdir(dest):
+            print("[Vidyax] no packages installed in vx_modules/")
+        else:
+            print("[Vidyax] installed packages:")
+            for pkg in sorted(os.listdir(dest)):
+                print(f"  - {pkg}")
+    elif cmd == "remove":
+        if len(args) < 2:
+            print("[Vidyax] usage: vidyax remove <package>")
+            sys.exit(1)
+        import shutil, json
+        pkg_name = args[1]
+        target = os.path.join(os.getcwd(), "vx_modules", pkg_name)
+        if os.path.exists(target):
+            if os.path.isdir(target):
+                shutil.rmtree(target)
+            else:
+                os.remove(target)
+            print(f"[Vidyax] removed '{pkg_name}'")
+        else:
+            # Also check for .vx single files just in case
+            target_vx = os.path.join(os.getcwd(), "vx_modules", pkg_name + ".vx")
+            if os.path.exists(target_vx):
+                os.remove(target_vx)
+                print(f"[Vidyax] removed '{pkg_name}.vx'")
+            else:
+                print(f"[Vidyax] package '{pkg_name}' not found")
+                sys.exit(1)
+        # Update lockfile
+        lock_path = "vx.lock"
+        if os.path.exists(lock_path):
+            with open(lock_path, "r", encoding="utf-8") as f:
+                try:
+                    lock_data = json.load(f)
+                except Exception:
+                    lock_data = {}
+            if pkg_name in lock_data:
+                del lock_data[pkg_name]
+                with open(lock_path, "w", encoding="utf-8") as f:
+                    json.dump(lock_data, f, indent=2)
     elif cmd == "fmt":
         print(f"[Vidyax] command '{cmd}' is not supported yet (roadmap)")
     elif cmd.endswith((".vx", ".vax")) or os.path.exists(cmd):

@@ -1,0 +1,7 @@
+# Standard Filesystem Module
+
+func read(path):
+    return readfile(path)
+
+func write(path, content):
+    return writefile(path, content)
