@@ -1,0 +1,31 @@
+@tool(permissions="read")
+func read_company_docs(path):
+    return readfile(path)
+
+agent s1:
+    system "Kamu adalah AI Generator. Tugasmu adalah menggunakan tool 'read_company_docs' untuk membaca file 'docs.txt' lalu membuat satu kalimat ringkasan singkat tentang isinya."
+
+agent s2:
+    system "Kamu adalah AI Verifier. Tugasmu adalah mengevaluasi draf ringkasan yang dikirim oleh Generator, dan memverifikasi kesesuaiannya dengan file asli (baca menggunakan 'read_company_docs')."
+
+print "=== Vidyax Nadev Architecture: Anti-Hallucination Swarm ==="
+print "[Main] Membuat file data dummy 'docs.txt'..."
+writefile("docs.txt", "Perusahaan NadevCorp didirikan pada tahun 2026 dan berfokus pada pengembangan bahasa Vidyax dan ekosistem AI sandboxing bernama Nadev.")
+
+print "[Main] Menginisialisasi Generator (s1) untuk membuat draf ringkasan..."
+draft : s1("Silakan baca 'docs.txt' dan buat ringkasan singkatnya.")
+print ""
+print "[Generator s1 Draft Output]:"
+print draft
+print ""
+
+print "[Main] Mengirimkan draf dari s1 ke Shared Memory (SwarmMessenger)..."
+shm_write("swarm_channel_1", draft)
+
+print "[Main] Menginstruksikan Verifier (s2) untuk mengevaluasi draf via SHM..."
+hasil : s2("Draf telah dikirim ke /dev/shm/vx_shm_swarm_channel_1. Silakan baca file SHM tersebut menggunakan 'read_company_docs' lalu bandingkan kebenarannya dengan sumber aslinya di 'docs.txt'. Berikan hasil verifikasi akhir.")
+print ""
+print "[Verifier s2 Final Output]:"
+print hasil
+print ""
+print "=== Pipeline Selesai ==="
