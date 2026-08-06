@@ -54,6 +54,37 @@ void list_push(OList *l, Value v) {
     }
     l->items[l->count++] = v;
 }
+
+OMap *map_new(void) {
+    OMap *m = (OMap *)alloc_obj(sizeof(OMap), O_MAP);
+    m->count = 0; m->cap = 4;
+    m->entries = xmalloc(sizeof(MapEntry) * m->cap);
+    return m;
+}
+void map_set(OMap *m, OStr *k, Value v) {
+    for (uint32_t i = 0; i < m->count; i++) {
+        if (m->entries[i].key == k) { m->entries[i].v = v; return; }
+        if (m->entries[i].key->len == k->len && memcmp(m->entries[i].key->chars, k->chars, k->len) == 0) {
+            m->entries[i].v = v; return;
+        }
+    }
+    if (m->count == m->cap) {
+        m->entries = xrealloc(m->entries, sizeof(MapEntry) * m->cap, sizeof(MapEntry) * m->cap * 2);
+        m->cap *= 2;
+    }
+    m->entries[m->count].key = k;
+    m->entries[m->count].v = v;
+    m->count++;
+}
+bool map_get(OMap *m, OStr *k, Value *out) {
+    for (uint32_t i = 0; i < m->count; i++) {
+        if (m->entries[i].key == k) { *out = m->entries[i].v; return true; }
+        if (m->entries[i].key->len == k->len && memcmp(m->entries[i].key->chars, k->chars, k->len) == 0) {
+            *out = m->entries[i].v; return true;
+        }
+    }
+    return false;
+}
 Env *new_env(Env *parent, Proto *proto) {
     Env *e = (Env *)alloc_obj(sizeof(Env), O_ENV);
     e->parent = parent; e->proto = proto;
@@ -76,6 +107,14 @@ static void mark_obj(Obj *o) {
     case O_LIST: {
         OList *l = (OList *)o;
         for (uint32_t i = 0; i < l->count; i++) mark_value(l->items[i]);
+        break;
+    }
+    case O_MAP: {
+        OMap *m = (OMap *)o;
+        for (uint32_t i = 0; i < m->count; i++) {
+            mark_obj((Obj *)m->entries[i].key);
+            mark_value(m->entries[i].v);
+        }
         break;
     }
     case O_FUNC:
@@ -117,7 +156,7 @@ static void mark_obj(Obj *o) {
 static void mark_value(Value v) {
     /* V_BUILTIN points into a static table, not the GC heap */
     if (v.t == V_STR || v.t == V_LIST || v.t == V_FUNC ||
-        v.t == V_AI || v.t == V_BOUND || v.t == V_TASK)
+        v.t == V_AI || v.t == V_BOUND || v.t == V_TASK || v.t == V_MAP)
         mark_obj(v.as.o);
 }
 static void free_obj(Obj *o) {   /* mirrors every byte alloc counted */
@@ -132,6 +171,12 @@ static void free_obj(Obj *o) {   /* mirrors every byte alloc counted */
         OList *l = (OList *)o;
         __atomic_sub_fetch(&mem_used, sizeof(OList) + l->cap * sizeof(Value), __ATOMIC_RELAXED);
         free(l->items);
+        break;
+    }
+    case O_MAP: {
+        OMap *m = (OMap *)o;
+        __atomic_sub_fetch(&mem_used, sizeof(OMap) + m->cap * sizeof(MapEntry), __ATOMIC_RELAXED);
+        free(m->entries);
         break;
     }
     case O_FUNC:

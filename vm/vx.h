@@ -35,6 +35,7 @@ enum {
     OP_LIST, OP_INDEX, OP_CALL, OP_MAKE_FUNC, OP_RET,
     OP_PRINT, OP_ASK, OP_CHECK_RPT, OP_CHECK_ITER, OP_LEN,
     OP_TRY_PUSH, OP_TRY_POP, OP_HALT,
+    OP_DICT,
     OP_LOAD_SLOT, OP_STORE_SLOT,
     OP_AI_NEW, OP_GET_MEMBER,
     OP_GO,     /* u8 argc — run the call as a task (docs/CONCURRENCY.md) */
@@ -51,6 +52,7 @@ enum {
 typedef enum { V_NULL, V_BOOL, V_NUM, V_STR, V_LIST, V_FUNC, V_BUILTIN,
                V_AI, V_BOUND, V_AGENT, /* ai module, bound method, agent */
                V_TASK,        /* a `go` task */
+               V_MAP,
                V_UNSET /* internal: slot declared but not yet assigned */ } VType;
 typedef struct Obj Obj;
 typedef struct Value {
@@ -60,6 +62,7 @@ typedef struct Value {
 
 typedef enum { O_STR, O_LIST, O_FUNC, O_ENV, O_AI, O_BOUND,
                O_TASK, /* a `go` task (docs/CONCURRENCY.md, Phase C) */
+               O_MAP,
                O_AGENT /* a stateful AI agent (Phase E) */ } OType;
 struct Obj {           /* common header; `next`+`mark` reserved for GC */
     OType type;
@@ -69,6 +72,9 @@ struct Obj {           /* common header; `next`+`mark` reserved for GC */
 
 typedef struct { Obj h; uint32_t len; char *chars; } OStr;
 typedef struct { Obj h; uint32_t count, cap; Value *items; } OList;
+
+typedef struct { OStr *key; Value v; } MapEntry;
+typedef struct { Obj h; uint32_t count, cap; MapEntry *entries; } OMap;
 
 typedef struct Proto {
     OStr    *name;
@@ -137,6 +143,12 @@ typedef struct { const char *name; BuiltinFn fn; } Builtin;
 #define AS_AI(v)   ((OAI *)(v).as.o)
 #define AS_BOUND(v) ((OBound *)(v).as.o)
 #define AS_AGENT(v) ((OAgent *)(v).as.o)
+#define AS_MAP(v)   ((OMap *)(v).as.o)
+
+/* ---- Map API ---- */
+OMap *map_new(void);
+void map_set(OMap *m, OStr *k, Value v);
+bool map_get(OMap *m, OStr *k, Value *out);
 
 /* ---- string builder ---- */
 typedef struct { char *buf; size_t len, cap; } SB;
@@ -238,6 +250,7 @@ Value vbool(int b);
 Value vnum(double n);
 Value vstr_o(OStr *s);
 Value vlist_o(OList *l);
+Value vmap_o(OMap *m);
 Value vai_o(OAI *a);
 Value vbound_o(OBound *b);
 void  env_set(Env *e, OStr *key, Value v);

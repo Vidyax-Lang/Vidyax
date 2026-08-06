@@ -102,7 +102,7 @@ uint32_t line_for(const Proto *p, uint32_t ip) {
 static int opsize(uint8_t op) {   /* operand bytes; -1 = unknown opcode */
     switch (op) {
     case OP_CONST: case OP_LOAD: case OP_STORE:
-    case OP_LIST: case OP_MAKE_FUNC: case OP_GET_MEMBER:
+    case OP_LIST: case OP_DICT: case OP_MAKE_FUNC: case OP_GET_MEMBER:
     case OP_LOAD_SLOT: case OP_STORE_SLOT: return 2;
     case OP_CALL: case OP_GO: case OP_SBOX_ENTER: return 1;
     case OP_JMP: case OP_JMP_IF_FALSE: case OP_JIF_PEEK:

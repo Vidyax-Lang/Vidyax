@@ -1,0 +1,7 @@
+d : {"a": 1, "b": 2}
+print d
+print d["a"]
+set(d, "c", 3)
+print json_string(d)
+p : json_parse("{\"test\": 123}")
+print p["test"]

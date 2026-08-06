@@ -222,6 +222,19 @@ void vx_run_loop(void) {
             push(vlist_o(l));
             break;
         }
+        case OP_DICT: {
+            uint16_t n; memcpy(&n, code + fr->ip, 2); fr->ip += 2;
+            OMap *m = map_new();
+            for (int i = 0; i < n; i++) {
+                Value v = stack[sp - (n * 2) + 2 * i + 1];
+                Value k = stack[sp - (n * 2) + 2 * i];
+                if (k.t != V_STR) vm_error("dict key must be text");
+                map_set(m, AS_STR(k), v);
+            }
+            sp -= (n * 2);
+            push(vmap_o(m));
+            break;
+        }
         case OP_INDEX: { Value i = pop(), o = pop(); push(do_index(o, i)); break; }
         case OP_CALL: {
             uint8_t argc = code[fr->ip++];

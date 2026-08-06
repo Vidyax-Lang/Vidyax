@@ -432,26 +432,229 @@ static Value b_find(int argc, Value *a) {
     vm_error("find() needs a list or text");
     return vnull();
 }
-static Value b_slice(int argc, Value *a) {
-    if (argc != 3 || !numlike(a[1]) || !numlike(a[2]))
-        vm_error("slice() needs a list or text");
-    long long n, lo = (long long)trunc(as_num(a[1])),
-                 hi = (long long)trunc(as_num(a[2]));
-    if (a[0].t == V_LIST)      n = AS_LIST(a[0])->count;
-    else if (a[0].t == V_STR)  n = AS_STR(a[0])->len;
-    else { vm_error("slice() needs a list or text"); return vnull(); }
-    if (lo < 0) lo += n;                          /* Python x[a:b] rules */
-    if (lo < 0) lo = 0;
-    if (lo > n) lo = n;
-    if (hi < 0) hi += n;
-    if (hi < 0) hi = 0;
-    if (hi > n) hi = n;
-    if (hi < lo) hi = lo;
-    if (a[0].t == V_STR)
-        return vstr_o(new_str(AS_STR(a[0])->chars + lo, (uint32_t)(hi - lo)));
-    OList *src = AS_LIST(a[0]), *out = new_list((uint32_t)(hi - lo) + 1);
-    for (long long i = lo; i < hi; i++) list_push(out, src->items[i]);
-    return vlist_o(out);
+static Value b_slice(int argc, Value *args) {
+    if (argc < 2 || argc > 3) vm_error("slice() takes 2 or 3 arguments");
+    if (args[0].t != V_LIST && args[0].t != V_STR) vm_error("slice() needs list or text");
+    if (!numlike(args[1])) vm_error("slice() needs numeric start");
+    long long start = (long long)as_num(args[1]);
+    long long end = -1;
+    if (argc == 3) {
+        if (!numlike(args[2])) vm_error("slice() needs numeric end");
+        end = (long long)as_num(args[2]);
+    }
+    
+    if (args[0].t == V_LIST) {
+        OList *l = AS_LIST(args[0]);
+        long long count = l->count;
+        if (start < 0) start += count;
+        if (start < 0) start = 0;
+        if (start > count) start = count;
+        
+        if (argc == 2) end = count;
+        else {
+            if (end < 0) end += count;
+            if (end < 0) end = 0;
+            if (end > count) end = count;
+        }
+        
+        if (start >= end) return vlist_o(new_list(0));
+        OList *nl = new_list(end - start);
+        for (long long i = start; i < end; i++) list_push(nl, l->items[i]);
+        return vlist_o(nl);
+    } else {
+        OStr *s = AS_STR(args[0]);
+        long long count = s->len;
+        if (start < 0) start += count;
+        if (start < 0) start = 0;
+        if (start > count) start = count;
+        
+        if (argc == 2) end = count;
+        else {
+            if (end < 0) end += count;
+            if (end < 0) end = 0;
+            if (end > count) end = count;
+        }
+        
+        if (start >= end) return vstr_o(new_str("", 0));
+        return vstr_o(new_str(s->chars + start, end - start));
+    }
+}
+
+static Value b_set(int argc, Value *args) {
+    if (argc != 3) vm_error("set() takes 3 arguments");
+    if (args[0].t != V_MAP) vm_error("set() needs a dict");
+    if (args[1].t != V_STR) vm_error("dict key must be text");
+    map_set(AS_MAP(args[0]), AS_STR(args[1]), args[2]);
+    return args[0];
+}
+static Value b_has(int argc, Value *args) {
+    if (argc != 2) vm_error("has() takes 2 arguments");
+    if (args[0].t == V_MAP) {
+        if (args[1].t != V_STR) return vbool(0);
+        Value out;
+        return vbool(map_get(AS_MAP(args[0]), AS_STR(args[1]), &out));
+    }
+    if (args[0].t == V_LIST || args[0].t == V_STR) {
+        /* simplified contains logic for list/str */
+        if (args[0].t == V_LIST) {
+            OList *l = AS_LIST(args[0]);
+            for (uint32_t i = 0; i < l->count; i++)
+                if (values_eq(l->items[i], args[1])) return vbool(1);
+            return vbool(0);
+        } else {
+            if (args[1].t != V_STR) return vbool(0);
+            return vbool(strstr(AS_STR(args[0])->chars, AS_STR(args[1])->chars) != NULL);
+        }
+    }
+    vm_error("has() needs a dict, list, or text");
+    return vnull();
+}
+static Value b_keys(int argc, Value *args) {
+    if (argc != 1 || args[0].t != V_MAP) vm_error("keys() needs a dict");
+    OMap *m = AS_MAP(args[0]);
+    OList *l = new_list(m->count);
+    for (uint32_t i = 0; i < m->count; i++) list_push(l, vstr_o(m->entries[i].key));
+    return vlist_o(l);
+}
+static Value b_values(int argc, Value *args) {
+    if (argc != 1 || args[0].t != V_MAP) vm_error("values() needs a dict");
+    OMap *m = AS_MAP(args[0]);
+    OList *l = new_list(m->count);
+    for (uint32_t i = 0; i < m->count; i++) list_push(l, m->entries[i].v);
+    return vlist_o(l);
+}
+static void skip_ws(const char **p) {
+    while (**p == ' ' || **p == '\t' || **p == '\n' || **p == '\r') (*p)++;
+}
+static Value parse_json_value(const char **p);
+static OStr *parse_json_string(const char **p) {
+    (*p)++; /* skip quote */
+    SB sb; sb_init(&sb);
+    while (**p && **p != '"') {
+        if (**p == '\\') {
+            (*p)++;
+            char c = **p;
+            if (c == 'n') sb_put(&sb, "\n", 1);
+            else if (c == 'r') sb_put(&sb, "\r", 1);
+            else if (c == 't') sb_put(&sb, "\t", 1);
+            else sb_put(&sb, &c, 1);
+        } else {
+            sb_put(&sb, *p, 1);
+        }
+        (*p)++;
+    }
+    if (**p == '"') (*p)++;
+    OStr *s = new_str(sb.buf, (uint32_t)sb.len);
+    xfree(sb.buf, sb.cap);
+    return s;
+}
+static Value parse_json_value(const char **p) {
+    skip_ws(p);
+    if (!**p) return vnull();
+    if (**p == '"') {
+        return vstr_o(parse_json_string(p));
+    }
+    if (**p == '{') {
+        (*p)++;
+        OMap *m = map_new();
+        skip_ws(p);
+        if (**p == '}') { (*p)++; return vmap_o(m); }
+        while (**p) {
+            skip_ws(p);
+            if (**p != '"') break;
+            OStr *k = parse_json_string(p);
+            skip_ws(p);
+            if (**p == ':') (*p)++;
+            Value v = parse_json_value(p);
+            map_set(m, k, v);
+            skip_ws(p);
+            if (**p == ',') (*p)++;
+            else if (**p == '}') { (*p)++; break; }
+            else break;
+        }
+        return vmap_o(m);
+    }
+    if (**p == '[') {
+        (*p)++;
+        OList *l = new_list(0);
+        skip_ws(p);
+        if (**p == ']') { (*p)++; return vlist_o(l); }
+        while (**p) {
+            Value v = parse_json_value(p);
+            list_push(l, v);
+            skip_ws(p);
+            if (**p == ',') (*p)++;
+            else if (**p == ']') { (*p)++; break; }
+            else break;
+        }
+        return vlist_o(l);
+    }
+    if (strncmp(*p, "true", 4) == 0) { *p += 4; return vbool(1); }
+    if (strncmp(*p, "false", 5) == 0) { *p += 5; return vbool(0); }
+    if (strncmp(*p, "null", 4) == 0) { *p += 4; return vnull(); }
+    /* number */
+    char *end;
+    double n = strtod(*p, &end);
+    *p = end;
+    return vnum(n);
+}
+
+static Value b_json_parse(int argc, Value *args) {
+    if (argc != 1 || args[0].t != V_STR) vm_error("json_parse() takes 1 text argument");
+    const char *p = AS_STR(args[0])->chars;
+    return parse_json_value(&p);
+}
+static void json_str_into(SB *sb, Value v) {
+    if (v.t == V_NULL) { sb_puts(sb, "null"); return; }
+    if (v.t == V_BOOL) { sb_puts(sb, v.as.b ? "true" : "false"); return; }
+    if (v.t == V_NUM)  { char nb[400]; fmt_double(v.as.n, nb, sizeof nb); sb_puts(sb, nb); return; }
+    if (v.t == V_STR) {
+        sb_puts(sb, "\"");
+        OStr *s = AS_STR(v);
+        for (uint32_t i = 0; i < s->len; i++) {
+            char c = s->chars[i];
+            if (c == '"') sb_puts(sb, "\\\"");
+            else if (c == '\\') sb_puts(sb, "\\\\");
+            else if (c == '\n') sb_puts(sb, "\\n");
+            else if (c == '\r') sb_puts(sb, "\\r");
+            else if (c == '\t') sb_puts(sb, "\\t");
+            else sb_put(sb, &c, 1);
+        }
+        sb_puts(sb, "\"");
+        return;
+    }
+    if (v.t == V_LIST) {
+        sb_puts(sb, "[");
+        OList *l = AS_LIST(v);
+        for (uint32_t i = 0; i < l->count; i++) {
+            if (i) sb_puts(sb, ", ");
+            json_str_into(sb, l->items[i]);
+        }
+        sb_puts(sb, "]");
+        return;
+    }
+    if (v.t == V_MAP) {
+        sb_puts(sb, "{");
+        OMap *m = AS_MAP(v);
+        for (uint32_t i = 0; i < m->count; i++) {
+            if (i) sb_puts(sb, ", ");
+            json_str_into(sb, vstr_o(m->entries[i].key));
+            sb_puts(sb, ": ");
+            json_str_into(sb, m->entries[i].v);
+        }
+        sb_puts(sb, "}");
+        return;
+    }
+    vm_error("cannot stringify %s to JSON", type_name(v));
+}
+
+static Value b_json_string(int argc, Value *args) {
+    if (argc != 1) vm_error("json_string() takes 1 argument");
+    SB sb; sb_init(&sb);
+    json_str_into(&sb, args[0]);
+    OStr *s = new_str(sb.buf, (uint32_t)sb.len);
+    xfree(sb.buf, sb.cap);
+    return vstr_o(s);
 }
 
 static Value b_sleep(int argc, Value *a) {
@@ -572,7 +775,10 @@ Builtin BUILTINS[] = {
     {"startswith", b_startswith}, {"endswith", b_endswith},
     {"pop", b_pop}, {"remove", b_remove}, {"insert", b_insert},
     {"sort", b_sort}, {"reverse", b_reverse}, {"find", b_find},
-    {"slice", b_slice}, {"sleep", b_sleep}, {"now", b_now},
+    {"slice", b_slice},
+    {"set", b_set}, {"has", b_has}, {"keys", b_keys}, {"values", b_values},
+    {"json_parse", b_json_parse}, {"json_string", b_json_string},
+    {"sleep", b_sleep}, {"now", b_now},
     {"wait", b_wait},
     /* Standard Library Tools (Fase F) */
     {"mmap_read", b_mmap_read},

@@ -44,7 +44,7 @@ KEYWORDS = {
 
 TWO_CHAR_OPS = {"==", "!=", "<=", ">="}
 ONE_CHAR_OPS = {
-    ":", "(", ")", "[", "]", ",", ".",
+    ":", "(", ")", "[", "]", "{", "}", ",", ".",
     "+", "-", "*", "/", "%", "<", ">", "=", "@",
 }
 
@@ -195,9 +195,9 @@ def lex(source):
                 continue
             # one-char operators
             if c in ONE_CHAR_OPS:
-                if c in "([":
+                if c in "([{":
                     bracket_depth += 1
-                elif c in ")]":
+                elif c in ")]}":
                     bracket_depth = max(0, bracket_depth - 1)
                 tokens.append(Token("OP", c, line_no))
                 i += 1
@@ -232,6 +232,8 @@ class Bool(Node):
 class Null(Node): pass
 class ListLit(Node):
     def __init__(self, items): self.items = items
+class DictLit(Node):
+    def __init__(self, pairs): self.pairs = pairs
 class Var(Node):
     def __init__(self, name, line): self.name = name; self.line = line
 class Assign(Node):
@@ -710,9 +712,27 @@ class Parser:
                 items.append(self.expression())
                 while self.at("OP", ","):
                     self.eat("OP", ",")
+                    if self.at("OP", "]"): break
                     items.append(self.expression())
             self.eat("OP", "]")
             return ListLit(items)
+        if t.kind == "OP" and t.value == "{":
+            self.eat("OP", "{")
+            pairs = []
+            if not self.at("OP", "}"):
+                k = self.expression()
+                self.eat("OP", ":")
+                v = self.expression()
+                pairs.append((k, v))
+                while self.at("OP", ","):
+                    self.eat("OP", ",")
+                    if self.at("OP", "}"): break
+                    k = self.expression()
+                    self.eat("OP", ":")
+                    v = self.expression()
+                    pairs.append((k, v))
+            self.eat("OP", "}")
+            return DictLit(pairs)
         if t.kind in ("NEWLINE", "DEDENT", "EOF"):
             raise VidyaxError(
                 "this line looks unfinished — something is missing after here",
@@ -928,6 +948,7 @@ class Interpreter:
     def eval_Bool(self, n, env): return n.v
     def eval_Null(self, n, env): return None
     def eval_ListLit(self, n, env): return [self.eval(x, env) for x in n.items]
+    def eval_DictLit(self, n, env): return {self.eval(k, env): self.eval(v, env) for k, v in n.pairs}
     def eval_Var(self, n, env): return env.get(n.name, n.line)
 
     def eval_Input(self, n, env):
@@ -1033,7 +1054,7 @@ def _walk(node):
                     yield from _walk(item)
 
 _TYPE_NAMES = {Number: "number", Str: "text", Bool: "boolean",
-               Null: "null", ListLit: "list"}
+               Null: "null", ListLit: "list", DictLit: "dict"}
 
 def infer_type(node):
     """Guess a node's type if it can be known from a literal. None = unknown."""
@@ -1199,6 +1220,7 @@ def _vstr(v):
     if v is None: return "null"
     if isinstance(v, float): return str(int(v)) if v.is_integer() else str(v)
     if isinstance(v, list): return "[" + ", ".join(_vstr(x) for x in v) + "]"
+    if isinstance(v, dict): return "{" + ", ".join(_vstr(k) + ": " + _vstr(val) for k, val in v.items()) + "}"
     if type(v).__name__ == "_VTask": return "<task %s>" % v.name
     if type(v).__name__ == "_Agent": return "<agent %s>" % v._name
     return str(v)
@@ -1256,6 +1278,9 @@ def _cmp(a, b):
                          % (_b_type(a), _b_type(b)))
 
 def _index(o, i):
+    if isinstance(o, dict):
+        if i not in o: raise _VidyaxRuntime(f"key '{_vstr(i)}' not found in dict")
+        return o[i]
     try: return o[int(i)]
     except Exception: raise _VidyaxRuntime("index out of range")
 
@@ -1446,6 +1471,28 @@ def _b_push(lst, x):
         raise _VidyaxRuntime("push() needs a list and a value")
     lst.append(x); return lst
 
+def _b_set(obj, k, v):
+    if isinstance(obj, dict):
+        obj[k] = v
+        return obj
+    raise _VidyaxRuntime("set() needs a dict")
+def _b_has(obj, k):
+    if isinstance(obj, dict): return k in obj
+    if isinstance(obj, (list, str)): return k in obj
+    raise _VidyaxRuntime("has() needs a dict, list, or text")
+def _b_keys(obj):
+    if not isinstance(obj, dict): raise _VidyaxRuntime("keys() needs a dict")
+    return list(obj.keys())
+def _b_values(obj):
+    if not isinstance(obj, dict): raise _VidyaxRuntime("values() needs a dict")
+    return list(obj.values())
+def _b_json_parse(s):
+    try: return _json.loads(_vstr(s))
+    except Exception as e: raise _VidyaxRuntime("json_parse error: " + str(e))
+def _b_json_string(obj):
+    try: return _json.dumps(obj)
+    except Exception as e: raise _VidyaxRuntime("json_string error: " + str(e))
+
 def _b_abs(x):
     if not isinstance(x, (bool, int, float)):
         raise _VidyaxRuntime("abs() needs a number")
@@ -1478,6 +1525,7 @@ def _b_type(x):
     if isinstance(x, (int, float)): return "number"
     if isinstance(x, str): return "text"
     if isinstance(x, list): return "list"
+    if isinstance(x, dict): return "dict"
     if x is None: return "null"
     if type(x).__name__ == "_VTask": return "task"
     if type(x).__name__ == "_Agent": return "agent"
@@ -1838,6 +1886,9 @@ BUILTINS = {
     "insert": _RT_NS["_b_insert"], "sort": _RT_NS["_b_sort"],
     "reverse": _RT_NS["_b_reverse"], "find": _RT_NS["_b_find"],
     "slice": _RT_NS["_b_slice"],
+    "set": _RT_NS["_b_set"], "has": _RT_NS["_b_has"],
+    "keys": _RT_NS["_b_keys"], "values": _RT_NS["_b_values"],
+    "json_parse": _RT_NS["_b_json_parse"], "json_string": _RT_NS["_b_json_string"],
     "sleep": _RT_NS["_b_sleep"], "now": _RT_NS["_b_now"],
     "wait": _RT_NS["_b_wait"],
     "mmap_read": _RT_NS["_b_mmap_read"],
@@ -1995,6 +2046,8 @@ class Transpiler:
             return "None"
         if t == "ListLit":
             return "[" + ", ".join(self.expr(x) for x in n.items) + "]"
+        if t == "DictLit":
+            return "{" + ", ".join(self.expr(k) + ": " + self.expr(v) for k, v in n.pairs) + "}"
         if t == "Var":
             return _pyname(n.name)
         if t == "Input":

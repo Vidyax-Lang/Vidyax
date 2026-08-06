@@ -7,6 +7,7 @@ Value vbool(int b) { Value v; v.t = V_BOOL; v.as.b = !!b; return v; }
 Value vnum(double n) { Value v; v.t = V_NUM; v.as.n = n; return v; }
 Value vstr_o(OStr *s) { Value v; v.t = V_STR; v.as.o = (Obj *)s; return v; }
 Value vlist_o(OList *l) { Value v; v.t = V_LIST; v.as.o = (Obj *)l; return v; }
+Value vmap_o(OMap *m) { Value v; v.t = V_MAP; v.as.o = (Obj *)m; return v; }
 Value vai_o(OAI *a) { Value v; v.t = V_AI; v.as.o = (Obj *)a; return v; }
 Value vbound_o(OBound *b) { Value v; v.t = V_BOUND; v.as.o = (Obj *)b; return v; }
 #define AS_STR(v)  ((OStr *)(v).as.o)
@@ -85,6 +86,18 @@ void vstr_into(SB *sb, Value v) {
         sb_puts(sb, "]");
         break;
     }
+    case V_MAP: {
+        sb_puts(sb, "{");
+        OMap *m = AS_MAP(v);
+        for (uint32_t i = 0; i < m->count; i++) {
+            if (i) sb_puts(sb, ", ");
+            vstr_into(sb, vstr_o(m->entries[i].key));
+            sb_puts(sb, ": ");
+            vstr_into(sb, m->entries[i].v);
+        }
+        sb_puts(sb, "}");
+        break;
+    }
     case V_FUNC:
         sb_puts(sb, "<func "); sb_puts(sb, AS_FUNC(v)->proto->name->chars);
         sb_puts(sb, ">"); break;
@@ -144,6 +157,7 @@ int truthy(Value v) {
     case V_NUM:  return v.as.n != 0;
     case V_STR:  return AS_STR(v)->len > 0;
     case V_LIST: return AS_LIST(v)->count > 0;
+    case V_MAP:  return AS_MAP(v)->count > 0;
     default:     return 1;
     }
 }
@@ -155,6 +169,7 @@ const char *type_name(Value v) {
     case V_AGENT: return "agent";
     case V_BOOL: return "bool";  case V_NUM:  return "number";
     case V_STR:  return "text";  case V_LIST: return "list";
+    case V_MAP:  return "dict";
     case V_NULL: return "null";  default:     return "object";
     }
 }
@@ -173,6 +188,7 @@ int values_eq(Value a, Value b) {
             if (!values_eq(x->items[i], y->items[i])) return 0;
         return 1;
     }
+    case V_MAP: return a.as.o == b.as.o; /* Compare pointers for dict */
     default: return a.as.o == b.as.o;
     }
 }
@@ -222,6 +238,13 @@ Value do_add(Value a, Value b) {
     return vnull();
 }
 Value do_index(Value o, Value iv) {
+    if (o.t == V_MAP) {
+        if (iv.t != V_STR) vm_error("dict key must be text");
+        Value out;
+        if (!map_get(AS_MAP(o), AS_STR(iv), &out))
+            vm_error("key '%s' not found in dict", AS_STR(iv)->chars);
+        return out;
+    }
     if (!numlike(iv)) vm_error("index out of range");
     long long i = (long long)as_num(iv);   /* truncates, like int() */
     if (o.t == V_LIST) {
@@ -236,6 +259,7 @@ Value do_index(Value o, Value iv) {
         if (i < 0 || (uint64_t)i >= s->len) vm_error("index out of range");
         return vstr_o(new_str(s->chars + i, 1));
     }
+
     vm_error("index out of range");
     return vnull();
 }

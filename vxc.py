@@ -62,6 +62,9 @@ def _refs_in(stmts):
         elif t == "ListLit":
             for it in e.items:
                 ex(it)
+        elif t == "DictLit":
+            for k, v in e.pairs:
+                ex(k); ex(v)
 
     def st(s):
         t = type(s).__name__
@@ -157,14 +160,15 @@ OPS = {
     "TRY_PUSH": 35,    # u32 catch addr
     "TRY_POP": 36,
     "HALT": 37,
-    "LOAD_SLOT": 38,   # u16 slot index (direct stack access, no lookup)
-    "STORE_SLOT": 39,  # u16 slot index
-    "AI_NEW": 40,      # push a fresh 'ai' module object
-    "GET_MEMBER": 41,  # u16 const idx (member name str); pops obj, pushes member
-    "GO": 42,          # u8 argc — run the call as a task (docs/CONCURRENCY.md)
-    "AGENT": 43,       # pops system, model, name -> pushes an agent
-    "SBOX_ENTER": 44,  # u8 deny mask (1=net, 2=fs) — reduce ctx perms
-    "SBOX_EXIT": 45,   # restore perms saved by the matching ENTER
+    "DICT": 38,
+    "LOAD_SLOT": 39,   # u16 slot index (direct stack access, no lookup)
+    "STORE_SLOT": 40,  # u16 slot index
+    "AI_NEW": 41,      # push a fresh 'ai' module object
+    "GET_MEMBER": 42,  # u16 const idx (member name str); pops obj, pushes member
+    "GO": 43,          # u8 argc — run the call as a task (docs/CONCURRENCY.md)
+    "AGENT": 44,       # pops system, model, name -> pushes an agent
+    "SBOX_ENTER": 45,  # u8 deny mask (1=net, 2=fs) — reduce ctx perms
+    "SBOX_EXIT": 46,   # restore perms saved by the matching ENTER
 }
 
 
@@ -259,6 +263,9 @@ def _collect_candidates(ast):
         elif t == "ListLit":
             for x in e.items:
                 scan_expr(x)
+        elif t == "DictLit":
+            for k, v in e.pairs:
+                scan_expr(k); scan_expr(v)
         elif t in ("Member", "Index"):
             scan_expr(e.obj)
             if t == "Index":
@@ -323,6 +330,8 @@ def _inline_program(ast):
             e.operand = rw(e.operand)
         elif t == "ListLit":
             e.items = [rw(x) for x in e.items]
+        elif t == "DictLit":
+            e.pairs = [(rw(k), rw(v)) for k, v in e.pairs]
         elif t == "Member":
             e.obj = rw(e.obj)
         elif t == "Index":
@@ -757,6 +766,13 @@ class Compiler:
             if len(n.items) > 0xFFFF:
                 raise VidyaxError("list literal too long")
             self.emit(p, "LIST", ("H", len(n.items)))
+        elif t == "DictLit":
+            for k, v in n.pairs:
+                self.expr(p, k, ctx)
+                self.expr(p, v, ctx)
+            if len(n.pairs) > 0xFFFF:
+                raise VidyaxError("dict literal too long")
+            self.emit(p, "DICT", ("H", len(n.pairs)))
         elif t == "Var":
             self.name_load(p, n.name)
         elif t == "Input":
