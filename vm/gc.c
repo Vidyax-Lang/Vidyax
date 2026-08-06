@@ -36,6 +36,12 @@ Obj *alloc_obj(size_t size, OType t) {
 OStr *new_str(const char *chars, uint32_t len) {
     OStr *s = (OStr *)alloc_obj(sizeof(OStr), O_STR);
     s->len = len;
+    uint32_t hash = 2166136261u;
+    for (uint32_t i = 0; i < len; i++) {
+        hash ^= (uint8_t)chars[i];
+        hash *= 16777619;
+    }
+    s->hash = hash;
     s->chars = xmalloc((size_t)len + 1);
     memcpy(s->chars, chars, len); s->chars[len] = 0;
     return s;
@@ -55,35 +61,70 @@ void list_push(OList *l, Value v) {
     l->items[l->count++] = v;
 }
 
+#define MAP_MAX_LOAD 0.75
+
 OMap *map_new(void) {
     OMap *m = (OMap *)alloc_obj(sizeof(OMap), O_MAP);
-    m->count = 0; m->cap = 4;
+    m->count = 0; m->cap = 8;
     m->entries = xmalloc(sizeof(MapEntry) * m->cap);
+    for (uint32_t i = 0; i < m->cap; i++) {
+        m->entries[i].key = NULL;
+        m->entries[i].v = vnull();
+    }
     return m;
 }
-void map_set(OMap *m, OStr *k, Value v) {
-    for (uint32_t i = 0; i < m->count; i++) {
-        if (m->entries[i].key == k) { m->entries[i].v = v; return; }
-        if (m->entries[i].key->len == k->len && memcmp(m->entries[i].key->chars, k->chars, k->len) == 0) {
-            m->entries[i].v = v; return;
+
+static MapEntry *find_entry(MapEntry *entries, uint32_t capacity, OStr *key) {
+    uint32_t index = key->hash & (capacity - 1);
+    for (;;) {
+        MapEntry *entry = &entries[index];
+        if (entry->key == NULL) {
+            /* Vidyax does not support deleting dict keys right now so no tombstones */
+            return entry;
+        } else if (entry->key == key || (entry->key->len == key->len && entry->key->hash == key->hash && memcmp(entry->key->chars, key->chars, key->len) == 0)) {
+            return entry;
         }
+        index = (index + 1) & (capacity - 1);
     }
-    if (m->count == m->cap) {
-        m->entries = xrealloc(m->entries, sizeof(MapEntry) * m->cap, sizeof(MapEntry) * m->cap * 2);
-        m->cap *= 2;
-    }
-    m->entries[m->count].key = k;
-    m->entries[m->count].v = v;
-    m->count++;
 }
-bool map_get(OMap *m, OStr *k, Value *out) {
-    for (uint32_t i = 0; i < m->count; i++) {
-        if (m->entries[i].key == k) { *out = m->entries[i].v; return true; }
-        if (m->entries[i].key->len == k->len && memcmp(m->entries[i].key->chars, k->chars, k->len) == 0) {
-            *out = m->entries[i].v; return true;
-        }
+
+static void adjust_capacity(OMap *m, uint32_t capacity) {
+    MapEntry *entries = xmalloc(sizeof(MapEntry) * capacity);
+    for (uint32_t i = 0; i < capacity; i++) {
+        entries[i].key = NULL;
+        entries[i].v = vnull();
     }
-    return false;
+    m->count = 0;
+    for (uint32_t i = 0; i < m->cap; i++) {
+        MapEntry *entry = &m->entries[i];
+        if (entry->key == NULL) continue;
+        MapEntry *dest = find_entry(entries, capacity, entry->key);
+        dest->key = entry->key;
+        dest->v = entry->v;
+        m->count++;
+    }
+    xfree(m->entries, sizeof(MapEntry) * m->cap);
+    m->entries = entries;
+    m->cap = capacity;
+}
+
+void map_set(OMap *m, OStr *k, Value v) {
+    if (m->count + 1 > m->cap * MAP_MAX_LOAD) {
+        adjust_capacity(m, m->cap * 2);
+    }
+    MapEntry *entry = find_entry(m->entries, m->cap, k);
+    bool is_new = entry->key == NULL;
+    if (is_new) m->count++;
+    entry->key = k;
+    entry->v = v;
+}
+
+bool map_get(OMap *m, OStr *k, Value *out) {
+    if (m->count == 0) return false;
+    MapEntry *entry = find_entry(m->entries, m->cap, k);
+    if (entry->key == NULL) return false;
+    *out = entry->v;
+    return true;
 }
 Env *new_env(Env *parent, Proto *proto) {
     Env *e = (Env *)alloc_obj(sizeof(Env), O_ENV);
@@ -111,7 +152,8 @@ static void mark_obj(Obj *o) {
     }
     case O_MAP: {
         OMap *m = (OMap *)o;
-        for (uint32_t i = 0; i < m->count; i++) {
+        for (uint32_t i = 0; i < m->cap; i++) {
+            if (!m->entries[i].key) continue;
             mark_obj((Obj *)m->entries[i].key);
             mark_value(m->entries[i].v);
         }

@@ -513,14 +513,18 @@ static Value b_keys(int argc, Value *args) {
     if (argc != 1 || args[0].t != V_MAP) vm_error("keys() needs a dict");
     OMap *m = AS_MAP(args[0]);
     OList *l = new_list(m->count);
-    for (uint32_t i = 0; i < m->count; i++) list_push(l, vstr_o(m->entries[i].key));
+    for (uint32_t i = 0; i < m->cap; i++) {
+        if (m->entries[i].key) list_push(l, vstr_o(m->entries[i].key));
+    }
     return vlist_o(l);
 }
 static Value b_values(int argc, Value *args) {
     if (argc != 1 || args[0].t != V_MAP) vm_error("values() needs a dict");
     OMap *m = AS_MAP(args[0]);
     OList *l = new_list(m->count);
-    for (uint32_t i = 0; i < m->count; i++) list_push(l, m->entries[i].v);
+    for (uint32_t i = 0; i < m->cap; i++) {
+        if (m->entries[i].key) list_push(l, m->entries[i].v);
+    }
     return vlist_o(l);
 }
 static void skip_ws(const char **p) {
@@ -636,8 +640,11 @@ static void json_str_into(SB *sb, Value v) {
     if (v.t == V_MAP) {
         sb_puts(sb, "{");
         OMap *m = AS_MAP(v);
-        for (uint32_t i = 0; i < m->count; i++) {
-            if (i) sb_puts(sb, ", ");
+        int first = 1;
+        for (uint32_t i = 0; i < m->cap; i++) {
+            if (!m->entries[i].key) continue;
+            if (!first) sb_puts(sb, ", ");
+            first = 0;
             json_str_into(sb, vstr_o(m->entries[i].key));
             sb_puts(sb, ": ");
             json_str_into(sb, m->entries[i].v);

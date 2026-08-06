@@ -70,7 +70,7 @@ struct Obj {           /* common header; `next`+`mark` reserved for GC */
     int   mark;
 };
 
-typedef struct { Obj h; uint32_t len; char *chars; } OStr;
+typedef struct { Obj h; uint32_t len; uint32_t hash; char *chars; } OStr;
 typedef struct { Obj h; uint32_t count, cap; Value *items; } OList;
 
 typedef struct { OStr *key; Value v; } MapEntry;

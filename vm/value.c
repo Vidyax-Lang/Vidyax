@@ -89,8 +89,11 @@ void vstr_into(SB *sb, Value v) {
     case V_MAP: {
         sb_puts(sb, "{");
         OMap *m = AS_MAP(v);
-        for (uint32_t i = 0; i < m->count; i++) {
-            if (i) sb_puts(sb, ", ");
+        int first = 1;
+        for (uint32_t i = 0; i < m->cap; i++) {
+            if (!m->entries[i].key) continue;
+            if (!first) sb_puts(sb, ", ");
+            first = 0;
             vstr_into(sb, vstr_o(m->entries[i].key));
             sb_puts(sb, ": ");
             vstr_into(sb, m->entries[i].v);
@@ -179,6 +182,7 @@ int values_eq(Value a, Value b) {
     switch (a.t) {
     case V_NULL: return 1;
     case V_STR:  return AS_STR(a)->len == AS_STR(b)->len &&
+                        AS_STR(a)->hash == AS_STR(b)->hash &&
                         memcmp(AS_STR(a)->chars, AS_STR(b)->chars,
                                AS_STR(a)->len) == 0;
     case V_LIST: {
