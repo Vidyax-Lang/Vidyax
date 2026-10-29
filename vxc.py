@@ -426,7 +426,7 @@ def _fold(n):
 _OPSIZE = {
     OPS["CONST"]: 2, OPS["LOAD"]: 2, OPS["STORE"]: 2,
     OPS["LOAD_SLOT"]: 2, OPS["STORE_SLOT"]: 2, OPS["GET_MEMBER"]: 2,
-    OPS["LIST"]: 2, OPS["MAKE_FUNC"]: 2, OPS["CALL"]: 1, OPS["GO"]: 1,
+    OPS["LIST"]: 2, OPS["DICT"]: 2, OPS["MAKE_FUNC"]: 2, OPS["CALL"]: 1, OPS["GO"]: 1,
     OPS["SBOX_ENTER"]: 1,
     OPS["JMP"]: 4, OPS["JMP_IF_FALSE"]: 4,
     OPS["JIF_PEEK"]: 4, OPS["JIT_PEEK"]: 4, OPS["TRY_PUSH"]: 4,

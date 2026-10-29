@@ -325,6 +325,15 @@ def _gen_proto(c, ix, p):
             e("      for (int i = 0; i < %d; i++) "
               "list_push(l, stack[sp - %d + i]);" % (arg, arg))
             e("      sp -= %d; push(vlist_o(l)); }" % arg)
+        elif nm == "DICT":
+            e("    { OMap *m = map_new();")
+            e("      for (int i = 0; i < %d; i++) {" % arg)
+            e("          Value v = stack[sp - %d + 2 * i + 1];" % (arg * 2))
+            e("          Value k = stack[sp - %d + 2 * i];" % (arg * 2))
+            e('          if (k.t != V_STR) vm_error("dict key must be text");')
+            e("          map_set(m, AS_STR(k), v);")
+            e("      }")
+            e("      sp -= %d; push(vmap_o(m)); }" % (arg * 2))
         elif nm == "INDEX":
             e("    { Value i = pop(), o = pop(); push(do_index(o, i)); }")
         elif nm == "CALL":
@@ -488,7 +497,7 @@ def native_file(path, out=None, keep_c=False):
     out = out or os.path.splitext(path)[0]
     vmdir = os.path.join(HERE, "vm")
     mods = [os.path.join(vmdir, m)
-            for m in ("value.c", "gc.c", "net.c", "builtins.c", "task.c")]
+            for m in ("value.c", "gc.c", "net.c", "builtins.c", "task.c", "vx_model_bridge.c")]
     cc = os.environ.get("CC", "cc")
     curl = shutil.which("pkg-config") and subprocess.run(
         ["pkg-config", "--exists", "libcurl"]).returncode == 0
@@ -498,13 +507,18 @@ def native_file(path, out=None, keep_c=False):
             cfile = os.path.join(td, "gen.c")
         with open(cfile, "w") as f:
             f.write(csrc)
-        cmd = [cc, "-O2", "-I", vmdir, cfile, *mods, "-o", out, "-lm", "-lpthread"]
+        base_cmd = [cc, "-O2", "-DVXVM_RUNTIME", "-I", vmdir]
         if curl:
-            flags = subprocess.run(["pkg-config", "--cflags", "--libs",
-                                    "libcurl"], capture_output=True,
-                                   text=True).stdout.split()
-            cmd = ([cc, "-O2", "-DVX_HAVE_CURL", "-I", vmdir, cfile, *mods,
-                    "-o", out, "-lm", "-lpthread"] + flags)
+            curl_cflags = subprocess.run(
+                ["pkg-config", "--cflags", "libcurl"],
+                capture_output=True, text=True).stdout.split()
+            curl_libs = subprocess.run(
+                ["pkg-config", "--libs", "libcurl"],
+                capture_output=True, text=True).stdout.split()
+            cmd = (base_cmd + ["-DVX_HAVE_CURL", *curl_cflags, cfile, *mods,
+                               "-o", out, "-lm", "-lpthread"] + curl_libs)
+        else:
+            cmd = base_cmd + [cfile, *mods, "-o", out, "-lm", "-lpthread"]
         r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode != 0:
             raise VidyaxError("native compilation failed:\n" + r.stderr[:2000])

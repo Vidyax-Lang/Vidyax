@@ -6,19 +6,28 @@
  * may grow while the interpreter lock is released. GC objects
  * themselves are only ever created while HOLDING the lock. */
 void *xmalloc(size_t n) {
+    size_t used = __atomic_add_fetch(&mem_used, n, __ATOMIC_RELAXED);
+    if (max_mem && used > max_mem) {
+        __atomic_sub_fetch(&mem_used, n, __ATOMIC_RELAXED);
+        vm_error("VM PANIC: memory limit exceeded (%zu bytes)", max_mem);
+    }
     void *p = malloc(n);
     if (!p) { fprintf(stderr, "[Vidyax] out of memory\n"); exit(1); }
-    size_t used = __atomic_add_fetch(&mem_used, n, __ATOMIC_RELAXED);
-    if (max_mem && used > max_mem)
-        vm_error("VM PANIC: memory limit exceeded (%zu bytes)", max_mem);
     return p;
 }
 void *xrealloc(void *old, size_t oldn, size_t newn) {
+    if (newn >= oldn) {
+        size_t diff = newn - oldn;
+        size_t used = __atomic_add_fetch(&mem_used, diff, __ATOMIC_RELAXED);
+        if (max_mem && used > max_mem) {
+            __atomic_sub_fetch(&mem_used, diff, __ATOMIC_RELAXED);
+            vm_error("VM PANIC: memory limit exceeded (%zu bytes)", max_mem);
+        }
+    } else {
+        __atomic_sub_fetch(&mem_used, oldn - newn, __ATOMIC_RELAXED);
+    }
     void *p = realloc(old, newn);
     if (!p) { fprintf(stderr, "[Vidyax] out of memory\n"); exit(1); }
-    size_t used = __atomic_add_fetch(&mem_used, newn - oldn, __ATOMIC_RELAXED);
-    if (max_mem && used > max_mem)
-        vm_error("VM PANIC: memory limit exceeded (%zu bytes)", max_mem);
     return p;
 }
 void xfree(void *p, size_t n) {
@@ -27,6 +36,7 @@ void xfree(void *p, size_t n) {
 }
 Obj *alloc_obj(size_t size, OType t) {
     Obj *o = xmalloc(size);
+    memset(o, 0, size);
     o->type = t; o->mark = 0;
     o->next = all_objs; all_objs = o;
     if (mem_used > peak_mem) peak_mem = mem_used;
@@ -35,7 +45,6 @@ Obj *alloc_obj(size_t size, OType t) {
 }
 OStr *new_str(const char *chars, uint32_t len) {
     OStr *s = (OStr *)alloc_obj(sizeof(OStr), O_STR);
-    s->len = len;
     uint32_t hash = 2166136261u;
     for (uint32_t i = 0; i < len; i++) {
         hash ^= (uint8_t)chars[i];
@@ -43,13 +52,15 @@ OStr *new_str(const char *chars, uint32_t len) {
     }
     s->hash = hash;
     s->chars = xmalloc((size_t)len + 1);
+    s->len = len;
     memcpy(s->chars, chars, len); s->chars[len] = 0;
     return s;
 }
 OList *new_list(uint32_t cap) {
     OList *l = (OList *)alloc_obj(sizeof(OList), O_LIST);
-    l->count = 0; l->cap = cap ? cap : 4;
-    l->items = xmalloc(sizeof(Value) * l->cap);
+    uint32_t init_cap = cap ? cap : 4;
+    l->items = xmalloc(sizeof(Value) * init_cap);
+    l->count = 0; l->cap = init_cap;
     return l;
 }
 void list_push(OList *l, Value v) {
@@ -65,8 +76,8 @@ void list_push(OList *l, Value v) {
 
 OMap *map_new(void) {
     OMap *m = (OMap *)alloc_obj(sizeof(OMap), O_MAP);
+    m->entries = xmalloc(sizeof(MapEntry) * 8);
     m->count = 0; m->cap = 8;
-    m->entries = xmalloc(sizeof(MapEntry) * m->cap);
     for (uint32_t i = 0; i < m->cap; i++) {
         m->entries[i].key = NULL;
         m->entries[i].v = vnull();
@@ -129,8 +140,8 @@ bool map_get(OMap *m, OStr *k, Value *out) {
 Env *new_env(Env *parent, Proto *proto) {
     Env *e = (Env *)alloc_obj(sizeof(Env), O_ENV);
     e->parent = parent; e->proto = proto;
+    e->entries = xmalloc(sizeof(EnvEntry) * 8);
     e->count = 0; e->cap = 8;
-    e->entries = xmalloc(sizeof(EnvEntry) * e->cap);
     return e;
 }
 
@@ -205,7 +216,7 @@ static void free_obj(Obj *o) {   /* mirrors every byte alloc counted */
     switch (o->type) {
     case O_STR: {
         OStr *s = (OStr *)o;
-        __atomic_sub_fetch(&mem_used, sizeof(OStr) + s->len + 1, __ATOMIC_RELAXED);
+        __atomic_sub_fetch(&mem_used, sizeof(OStr) + (s->chars ? (size_t)s->len + 1 : 0), __ATOMIC_RELAXED);
         free(s->chars);
         break;
     }

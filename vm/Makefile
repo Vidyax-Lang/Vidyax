@@ -16,7 +16,7 @@ vxvm: $(SRCS) vx.h
 	$(CC) $(CFLAGS) $(CURL_CFLAGS) -o vxvm $(SRCS) $(LDFLAGS) $(CURL_LIBS)
 
 debug: $(SRCS) vx.h
-	$(CC) -g -O0 -fsanitize=address,undefined -Wall -Wextra $(CURL_CFLAGS) -o vxvm $(SRCS) $(LDFLAGS) $(CURL_LIBS)
+	$(CC) -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -Wall -Wextra -DVXVM_RUNTIME $(CURL_CFLAGS) -o vxvm $(SRCS) $(LDFLAGS) $(CURL_LIBS)
 
 test: vxvm
 	cd .. && python3 tests_vm.py

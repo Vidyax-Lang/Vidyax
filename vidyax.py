@@ -2039,7 +2039,7 @@ class Transpiler:
         if t == "Number":
             return repr(n.v)
         if t == "Str":
-            return json.dumps(n.v)
+            return repr(n.v)
         if t == "Bool":
             return "True" if n.v else "False"
         if t == "Null":
@@ -2049,6 +2049,8 @@ class Transpiler:
         if t == "DictLit":
             return "{" + ", ".join(self.expr(k) + ": " + self.expr(v) for k, v in n.pairs) + "}"
         if t == "Var":
+            if n.name in BUILTIN_NAMES:
+                return f"_b_{n.name}"
             return _pyname(n.name)
         if t == "Input":
             return f"input(_vstr({self.expr(n.prompt)}) + ' ')"

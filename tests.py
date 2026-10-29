@@ -158,6 +158,11 @@ CASES = [
     # stdlib: files (the VM needs --allow-fs; tests_vm.py passes it)
     ('writefile("/tmp/vx_selftest.txt", "abc")\nprint readfile("/tmp/vx_selftest.txt")\n', "abc\n"),
     ('print writefile("/tmp/vx_selftest.txt", 123)\nprint readfile("/tmp/vx_selftest.txt")\n', "null\n123\n"),
+    # dict literals + first-class built-in function dispatch
+    ('func call1(fn, x):\n    return fn(x)\n'
+     'ops: {"up": upper, "n": len}\n'
+     'print [call1(ops["up"], "halo"), call1(ops["n"], "empat")]\n',
+     "[HALO, 5]\n"),
 ]
 
 # --- cases that must FAIL on both engines, with the SAME error text ---
@@ -622,9 +627,12 @@ print text(len(entitas(teks)))
                    # go/wait natively too (Phase D)
                    't: go fib(10)\nprint wait(t)\n'
                    'func g():\n    return 1 / 0\ntg: go g()\n'
-                   'try:\n    print wait(tg)\ncatch e:\n    print "task: " + e\n')
+                   'try:\n    print wait(tg)\ncatch e:\n    print "task: " + e\n'
+                   'func apply1(fn, x):\n    return fn(x)\n'
+                   'd: {"f": upper, "k": 42}\n'
+                   'print [apply1(d["f"], "aot"), d["k"]]\n')
         want_nat = ("err: cannot divide by 0\n610\n[1, 2, 3]\n"
-                    "55\ntask: cannot divide by 0\n")
+                    "55\ntask: cannot divide by 0\n[AOT, 42]\n")
         with tempfile.TemporaryDirectory() as td:
             nvx = os.path.join(td, "n.vx")
             with open(nvx, "w") as f:
