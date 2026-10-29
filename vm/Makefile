@@ -1,8 +1,8 @@
 CC      ?= cc
 CFLAGS  ?= -O2 -Wall -Wextra -DVXVM_RUNTIME
-LDFLAGS ?= -lm -lpthread
+LDFLAGS ?= -lm -lpthread -ldl
 
-SRCS := vm.c value.c gc.c net.c builtins.c loader.c debug.c profile.c task.c vx_model_bridge.c
+SRCS := vm.c value.c gc.c net.c builtins.c loader.c debug.c profile.c task.c vx_model_bridge.c vx_subcortex_bridge.c
 
 # libcurl backs ai.ask() and get(). Auto-detected via pkg-config; force off
 # with `make CURL=0` to build the stub (both raise a catchable error).

@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "vx_model_bridge.h"
+#include "vx_subcortex_bridge.h"
 
 /* ---- builtins (mirror vidyax.py RUNTIME semantics) ---- */
 static Value b_len(int argc, Value *a) {
@@ -794,6 +795,10 @@ Builtin BUILTINS[] = {
     /* Native C Model Bridge (Fase G) */
     {"model_load", b_model_load},
     {"model_infer", b_model_infer},
+    /* Tokenectomy Sub-Cortex C-ABI FFI Bridge */
+    {"subcortex_redact", b_subcortex_redact},
+    {"subcortex_prune", b_subcortex_prune},
+    {"subcortex_audit_ast", b_subcortex_audit_ast},
 };
 const size_t NBUILTINS = sizeof BUILTINS / sizeof BUILTINS[0];
 

@@ -488,6 +488,69 @@ def emit_c(c):
     return "\n\n".join(parts) + "\n"
 
 
+_SUBCORTEX_BUILTINS = frozenset((
+    "subcortex_redact",
+    "subcortex_prune",
+    "subcortex_audit_ast",
+))
+
+
+def _verify_trusted_staticlib(raw_path, from_env=False):
+    import stat as _stat
+    if from_env and not os.path.isabs(raw_path):
+        raise VidyaxError(
+            "native: VX_SUBCORTEX_STATIC_LIB must be an absolute path: %r" % raw_path
+        )
+    resolved = os.path.realpath(raw_path)
+    if not os.path.isfile(resolved):
+        return None
+    parent = os.path.dirname(resolved)
+    dir_st = os.stat(parent)
+    st = os.stat(resolved)
+    if not _stat.S_ISREG(st.st_mode):
+        raise VidyaxError("native: subcortex static library is not a regular file: %r" % resolved)
+    if hasattr(os, "geteuid"):
+        euid = os.geteuid()
+        if dir_st.st_uid not in (0, euid) or (dir_st.st_mode & 0o022) != 0:
+            raise VidyaxError(
+                "native: untrusted or group/world-writable parent directory for %r" % resolved
+            )
+        if st.st_uid not in (0, euid) or (st.st_mode & 0o022) != 0:
+            raise VidyaxError(
+                "native: untrusted owner or group/world-writable permissions on %r" % resolved
+            )
+    return resolved
+
+
+def _resolve_subcortex_staticlib():
+    env_lib = os.environ.get("VX_SUBCORTEX_STATIC_LIB")
+    if env_lib is not None:
+        if not env_lib:
+            raise VidyaxError("native: subcortex static library not found (VX_SUBCORTEX_STATIC_LIB is empty)")
+        verified = _verify_trusted_staticlib(env_lib, from_env=True)
+        if verified is None:
+            raise VidyaxError(
+                "native: subcortex static library not found at "
+                "VX_SUBCORTEX_STATIC_LIB=%r" % env_lib
+            )
+        return verified
+    candidates = (
+        os.path.join(HERE, "..", "..", "tools", "tokenectomy-oss", "target",
+                     "subcortex", "release", "libtokenectomy.a"),
+        os.path.join(HERE, "..", "..", "tools", "tokenectomy-oss", "target",
+                     "release", "libtokenectomy.a"),
+    )
+    for cand in candidates:
+        verified = _verify_trusted_staticlib(cand, from_env=False)
+        if verified is not None:
+            return verified
+    raise VidyaxError(
+        "native: subcortex static library (libtokenectomy.a) not found; "
+        "build tokenectomy-oss with --features subcortex-ffi or set "
+        "VX_SUBCORTEX_STATIC_LIB"
+    )
+
+
 def native_file(path, out=None, keep_c=False):
     with open(path, encoding="utf-8") as f:
         c = vxc.compile_source(f.read(),
@@ -497,7 +560,26 @@ def native_file(path, out=None, keep_c=False):
     out = out or os.path.splitext(path)[0]
     vmdir = os.path.join(HERE, "vm")
     mods = [os.path.join(vmdir, m)
-            for m in ("value.c", "gc.c", "net.c", "builtins.c", "task.c", "vx_model_bridge.c")]
+            for m in ("value.c", "gc.c", "net.c", "builtins.c", "task.c",
+                      "vx_model_bridge.c", "vx_subcortex_bridge.c")]
+    uses_subcortex = any(
+        kind == "str" and val in _SUBCORTEX_BUILTINS
+        for kind, val in c.consts
+    )
+    subcortex_cflags = []
+    subcortex_libs = ["-lm", "-lpthread"]
+    if uses_subcortex:
+        static_lib = _resolve_subcortex_staticlib()
+        subcortex_cflags.append("-DVX_SUBCORTEX_STATIC")
+        if sys.platform.startswith("linux"):
+            subcortex_cflags.extend(["-ffunction-sections", "-fdata-sections"])
+            subcortex_libs = ["-Wl,--gc-sections", static_lib,
+                              "-lpthread", "-ldl", "-lm"]
+        else:
+            subcortex_libs = [static_lib, "-lpthread", "-ldl", "-lm"]
+    else:
+        subcortex_cflags.append("-DVX_SUBCORTEX_NOOP")
+
     cc = os.environ.get("CC", "cc")
     curl = shutil.which("pkg-config") and subprocess.run(
         ["pkg-config", "--exists", "libcurl"]).returncode == 0
@@ -507,7 +589,8 @@ def native_file(path, out=None, keep_c=False):
             cfile = os.path.join(td, "gen.c")
         with open(cfile, "w") as f:
             f.write(csrc)
-        base_cmd = [cc, "-O2", "-DVXVM_RUNTIME", "-I", vmdir]
+        base_cmd = [cc, "-O2", "-DVXVM_RUNTIME", *subcortex_cflags,
+                    "-I", vmdir]
         if curl:
             curl_cflags = subprocess.run(
                 ["pkg-config", "--cflags", "libcurl"],
@@ -516,9 +599,9 @@ def native_file(path, out=None, keep_c=False):
                 ["pkg-config", "--libs", "libcurl"],
                 capture_output=True, text=True).stdout.split()
             cmd = (base_cmd + ["-DVX_HAVE_CURL", *curl_cflags, cfile, *mods,
-                               "-o", out, "-lm", "-lpthread"] + curl_libs)
+                               "-o", out] + subcortex_libs + curl_libs)
         else:
-            cmd = base_cmd + [cfile, *mods, "-o", out, "-lm", "-lpthread"]
+            cmd = base_cmd + [cfile, *mods, "-o", out] + subcortex_libs
         r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode != 0:
             raise VidyaxError("native compilation failed:\n" + r.stderr[:2000])

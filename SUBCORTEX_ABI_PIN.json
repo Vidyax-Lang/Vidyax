@@ -1,0 +1,25 @@
+{
+  "provider_crate": "tokenectomy",
+  "provider_relpath": "../../tools/tokenectomy-oss",
+  "header_relpath": "../../tools/tokenectomy-oss/include/tokenectomy_subcortex.h",
+  "abi_version": 1,
+  "header_sha256": "35f2eb2e483c88deb1222963bb2b00a6b21dc28cdc9ccb4807c5d144cac3fc40",
+  "limits": {
+    "max_input_bytes": 1048576,
+    "max_ast_bytes": 262144,
+    "max_path_bytes": 4096
+  },
+  "struct_layout_64bit": {
+    "tkmy_buf_size": 16,
+    "tkmy_result_size": 24,
+    "tkmy_result_out_offset": 8
+  },
+  "required_symbols": [
+    "tkmy_abi_version",
+    "tkmy_abi_sizes",
+    "tkmy_subcortex_redact",
+    "tkmy_subcortex_prune_log",
+    "tkmy_subcortex_audit_ast",
+    "tkmy_buf_free"
+  ]
+}

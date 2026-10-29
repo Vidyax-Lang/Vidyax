@@ -1208,9 +1208,10 @@ import keyword
 
 # Runtime helpers injected into every compiled program.
 RUNTIME = '''# --- Vidyax runtime (auto-generated) ---
-import os as _os, json as _json, urllib.request as _ureq, urllib.error as _uerr
+import os as _os, sys as _sys, ctypes as _ctypes
+import json as _json, urllib.request as _ureq, urllib.error as _uerr
 import math as _math, random as _random, functools as _ft, time as _time
-import threading as _thr
+import threading as _thr, stat as _stat, hashlib as _hashlib, hmac as _hmac
 
 class _VidyaxRuntime(Exception): pass
 
@@ -1725,6 +1726,260 @@ def _b_model_infer(handle, prompt):
         pass # isolation check
     return "[LLM Python Stub Inference] Response for: '" + str(prompt) + "'"
 
+# --- Tokenectomy Sub-Cortex C-ABI FFI Bridge (Engines 1 & 2 via ctypes) ---
+_TKMY_ABI_VERSION = 1
+_TKMY_STATUS_NAMES = {
+    0: "OK",
+    1: "INVALID_INPUT",
+    2: "UNKNOWN_LANG",
+    3: "SYNTAX_ERROR",
+    4: "LAZY_PLACEHOLDER",
+    5: "TOO_LARGE",
+    6: "TIMEOUT",
+    7: "INTERNAL",
+}
+
+class _TkmyBuf(_ctypes.Structure):
+    _fields_ = [("ptr", _ctypes.c_void_p), ("len", _ctypes.c_size_t)]
+
+class _TkmyResult(_ctypes.Structure):
+    _fields_ = [("status", _ctypes.c_int32), ("out", _TkmyBuf)]
+
+_SUBCORTEX_MU = _thr.Lock()
+_SUBCORTEX_CACHE = {}
+
+def _tkmy_status_name(st):
+    return _TKMY_STATUS_NAMES.get(int(st), "INTERNAL")
+
+def _tkmy_encode(s):
+    try:
+        return s.encode("utf-8", "surrogateescape")
+    except UnicodeEncodeError:
+        return s.encode("utf-8", "surrogatepass")
+
+def _subcortex_resolve_candidates():
+    ext = "dylib" if _sys.platform == "darwin" else "so"
+    home = globals().get("_VX_HOME")
+    if not home:
+        mod = _sys.modules.get("vidyax")
+        mfile = getattr(mod, "__file__", None) if mod is not None else None
+        if mfile:
+            home = _os.path.dirname(_os.path.abspath(mfile))
+        elif "__file__" in globals():
+            home = _os.path.dirname(_os.path.abspath(globals()["__file__"]))
+    cands = []
+    if home:
+        cands.append(_os.path.join(
+            home, "..", "..", "tools", "tokenectomy-oss", "target",
+            "subcortex", "release", "libtokenectomy." + ext))
+        cands.append(_os.path.join(
+            home, "..", "..", "tools", "tokenectomy-oss", "target",
+            "release", "libtokenectomy." + ext))
+    # Security: NEVER append bare "libtokenectomy.so" (blocks LD_LIBRARY_PATH hijacking)
+    return cands
+
+def _subcortex_verify_and_open_dylib(raw_path, from_env=False):
+    if from_env and not _os.path.isabs(raw_path):
+        raise _VidyaxRuntime(
+            "subcortex: failed to load library (VX_SUBCORTEX_LIB must be an absolute path)")
+    resolved = _os.path.realpath(raw_path)
+    parent = _os.path.dirname(resolved)
+    try:
+        dir_st = _os.stat(parent)
+    except OSError as e:
+        raise _VidyaxRuntime("subcortex: failed to load library (%s)" % e)
+    if not _stat.S_ISDIR(dir_st.st_mode):
+        raise _VidyaxRuntime(
+            "subcortex: failed to load library (invalid parent directory)")
+    euid = _os.geteuid() if hasattr(_os, "geteuid") else None
+    if euid is not None:
+        if dir_st.st_uid not in (0, euid):
+            raise _VidyaxRuntime(
+                "subcortex: failed to load library (untrusted parent directory owner uid=%d)"
+                % dir_st.st_uid)
+        if (dir_st.st_mode & 0o022) != 0:
+            raise _VidyaxRuntime(
+                "subcortex: failed to load library (parent directory %s is group/world-writable)"
+                % parent)
+
+    flags = _os.O_RDONLY | getattr(_os, "O_CLOEXEC", 0) | getattr(_os, "O_NOFOLLOW", 0)
+    try:
+        fd = _os.open(resolved, flags)
+    except OSError as e:
+        raise _VidyaxRuntime("subcortex: failed to load library (%s)" % e)
+    try:
+        st = _os.fstat(fd)
+        if not _stat.S_ISREG(st.st_mode):
+            raise _VidyaxRuntime(
+                "subcortex: failed to load library (not a regular file)")
+        if euid is not None:
+            if st.st_uid not in (0, euid):
+                raise _VidyaxRuntime(
+                    "subcortex: failed to load library (untrusted library owner uid=%d)"
+                    % st.st_uid)
+            if (st.st_mode & 0o022) != 0:
+                raise _VidyaxRuntime(
+                    "subcortex: failed to load library (library is group/world-writable)")
+        expected_sha = _os.environ.get("VX_SUBCORTEX_SHA256")
+        if expected_sha is not None:
+            norm_sha = expected_sha.strip().lower()
+            if len(norm_sha) != 64 or any(c not in "0123456789abcdef" for c in norm_sha):
+                raise _VidyaxRuntime(
+                    "subcortex: failed to load library (invalid VX_SUBCORTEX_SHA256 hex digest)")
+            h = _hashlib.sha256()
+            _os.lseek(fd, 0, _os.SEEK_SET)
+            while True:
+                chunk = _os.read(fd, 65536)
+                if not chunk:
+                    break
+                h.update(chunk)
+            actual_sha = h.hexdigest().lower()
+            if not _hmac.compare_digest(actual_sha, norm_sha):
+                raise _VidyaxRuntime(
+                    "subcortex: failed to load library (SHA-256 digest mismatch: expected %s, got %s)"
+                    % (norm_sha, actual_sha))
+        fd_path = "/proc/self/fd/%d" % fd
+        load_target = fd_path if (_sys.platform.startswith("linux") and _os.path.exists(fd_path)) else resolved
+        try:
+            return _ctypes.CDLL(load_target)
+        except Exception as e:
+            raise _VidyaxRuntime("subcortex: failed to load library (%s)" % e)
+    finally:
+        _os.close(fd)
+
+def _subcortex_lib():
+    with _SUBCORTEX_MU:
+        env_lib = _os.environ.get("VX_SUBCORTEX_LIB")
+        cache_key = ("env", env_lib) if env_lib else ("auto",)
+        if cache_key in _SUBCORTEX_CACHE:
+            return _SUBCORTEX_CACHE[cache_key]
+
+        lib = None
+        if env_lib is not None:
+            if not env_lib:
+                raise _VidyaxRuntime("subcortex: failed to load library (VX_SUBCORTEX_LIB is empty)")
+            lib = _subcortex_verify_and_open_dylib(env_lib, from_env=True)
+        else:
+            candidates = _subcortex_resolve_candidates()
+            for cand in candidates:
+                if not _os.path.isfile(cand):
+                    continue
+                try:
+                    lib = _subcortex_verify_and_open_dylib(cand, from_env=False)
+                    if lib is not None:
+                        break
+                except _VidyaxRuntime:
+                    continue
+            if lib is None:
+                raise _VidyaxRuntime(
+                    "subcortex: library (libtokenectomy) not found; "
+                    "build tokenectomy-oss with --features subcortex-ffi or set VX_SUBCORTEX_LIB")
+
+        lib.tkmy_abi_version.argtypes = []
+        lib.tkmy_abi_version.restype = _ctypes.c_uint32
+
+        ver = int(lib.tkmy_abi_version())
+        if ver != _TKMY_ABI_VERSION:
+            raise _VidyaxRuntime(
+                "subcortex: ABI mismatch: expected v%d, got v%d"
+                % (_TKMY_ABI_VERSION, ver))
+
+        lib.tkmy_subcortex_redact.argtypes = [_ctypes.c_char_p, _ctypes.c_size_t]
+        lib.tkmy_subcortex_redact.restype = _TkmyResult
+
+        lib.tkmy_subcortex_prune_log.argtypes = [_ctypes.c_char_p, _ctypes.c_size_t]
+        lib.tkmy_subcortex_prune_log.restype = _TkmyResult
+
+        lib.tkmy_subcortex_audit_ast.argtypes = [
+            _ctypes.c_char_p, _ctypes.c_size_t,
+            _ctypes.c_char_p, _ctypes.c_size_t,
+        ]
+        lib.tkmy_subcortex_audit_ast.restype = _TkmyResult
+
+        lib.tkmy_buf_free.argtypes = [_TkmyBuf]
+        lib.tkmy_buf_free.restype = None
+
+        if hasattr(lib, "tkmy_abi_sizes"):
+            lib.tkmy_abi_sizes.argtypes = [
+                _ctypes.POINTER(_ctypes.c_size_t),
+                _ctypes.POINTER(_ctypes.c_size_t),
+                _ctypes.POINTER(_ctypes.c_size_t),
+            ]
+            lib.tkmy_abi_sizes.restype = None
+            bsz = _ctypes.c_size_t(0)
+            rsz = _ctypes.c_size_t(0)
+            roff = _ctypes.c_size_t(0)
+            lib.tkmy_abi_sizes(_ctypes.byref(bsz), _ctypes.byref(rsz), _ctypes.byref(roff))
+            exp_bsz = _ctypes.sizeof(_TkmyBuf)
+            exp_rsz = _ctypes.sizeof(_TkmyResult)
+            exp_roff = _TkmyResult.out.offset
+            if (bsz.value, rsz.value, roff.value) != (exp_bsz, exp_rsz, exp_roff):
+                raise _VidyaxRuntime(
+                    "subcortex: ABI struct layout mismatch (got %d/%d/%d, expected %d/%d/%d)"
+                    % (bsz.value, rsz.value, roff.value, exp_bsz, exp_rsz, exp_roff))
+
+        _SUBCORTEX_CACHE[cache_key] = lib
+        return lib
+
+def _b_subcortex_redact(*a):
+    if len(a) != 1 or not isinstance(a[0], str):
+        raise _VidyaxRuntime("subcortex_redact() needs 1 text value")
+    lib = _subcortex_lib()
+    raw_in = _tkmy_encode(a[0])
+    res = lib.tkmy_subcortex_redact(raw_in, len(raw_in))
+    try:
+        if res.status != 0:
+            raise _VidyaxRuntime(
+                "subcortex_redact() failed: %s" % _tkmy_status_name(res.status))
+        if not res.out.ptr or res.out.len == 0:
+            return ""
+        return _ctypes.string_at(res.out.ptr, res.out.len).decode("utf-8", "replace")
+    finally:
+        lib.tkmy_buf_free(res.out)
+
+def _b_subcortex_prune(*a):
+    if len(a) != 1 or not isinstance(a[0], str):
+        raise _VidyaxRuntime("subcortex_prune() needs 1 text value")
+    lib = _subcortex_lib()
+    raw_in = _tkmy_encode(a[0])
+    res = lib.tkmy_subcortex_prune_log(raw_in, len(raw_in))
+    try:
+        if res.status != 0:
+            raise _VidyaxRuntime(
+                "subcortex_prune() failed: %s" % _tkmy_status_name(res.status))
+        if not res.out.ptr or res.out.len == 0:
+            return ""
+        return _ctypes.string_at(res.out.ptr, res.out.len).decode("utf-8", "replace")
+    finally:
+        lib.tkmy_buf_free(res.out)
+
+def _b_subcortex_audit_ast(*a):
+    if len(a) != 2 or not isinstance(a[0], str) or not isinstance(a[1], str):
+        raise _VidyaxRuntime("subcortex_audit_ast() needs 2 text values (path, code)")
+    lib = _subcortex_lib()
+    p_in = _tkmy_encode(a[0])
+    c_in = _tkmy_encode(a[1])
+    res = lib.tkmy_subcortex_audit_ast(p_in, len(p_in), c_in, len(c_in))
+    try:
+        st = int(res.status)
+        err_bytes = (
+            _ctypes.string_at(res.out.ptr, res.out.len)
+            if (res.out.ptr and res.out.len)
+            else b""
+        )
+    finally:
+        lib.tkmy_buf_free(res.out)
+    if st == 7:
+        raise _VidyaxRuntime("subcortex_audit_ast() internal error")
+    err_txt = err_bytes[:511].decode("utf-8", "replace")
+    # Explicit 4-field schema contract; map key iteration order is intentionally unspecified.
+    return {
+        "valid": st == 0,
+        "code": st,
+        "status": _tkmy_status_name(st),
+        "error": err_txt,
+    }
+
 # --- sandbox permissions (per-thread; capability model) --------------
 # The Python engines start with everything allowed (like today); the C
 # engines start from the --allow-* flags. A `sandbox deny ...:` block can
@@ -1863,7 +2118,7 @@ def _pyname(name):
 
 # Single source of truth: run the RUNTIME once to grab the built-ins,
 # so the tree-walker and the transpiler share identical behaviour.
-_RT_NS = {}
+_RT_NS = {"_VX_HOME": os.path.dirname(os.path.abspath(__file__))}
 exec(RUNTIME, _RT_NS)
 
 BUILTINS = {
@@ -1896,6 +2151,9 @@ BUILTINS = {
     "safe_calc": _RT_NS["_b_safe_calc"],
     "model_load": _RT_NS["_b_model_load"],
     "model_infer": _RT_NS["_b_model_infer"],
+    "subcortex_redact": _RT_NS["_b_subcortex_redact"],
+    "subcortex_prune": _RT_NS["_b_subcortex_prune"],
+    "subcortex_audit_ast": _RT_NS["_b_subcortex_audit_ast"],
 }
 BUILTIN_NAMES = set(BUILTINS)
 
@@ -2108,6 +2366,7 @@ def _transpile_program(source, standalone=True, base_dir=None):
     header = []
     if standalone:
         header.append("#!/usr/bin/env python3")
+        header.append(f"_VX_HOME = {os.path.dirname(os.path.abspath(__file__))!r}")
     header.append(RUNTIME)
     header.append("def _main():")
     header_str = "\n".join(header)
@@ -2158,7 +2417,10 @@ def run_fast_text(source, base_dir=None):
     differential tests, which run every case through BOTH engines."""
     py, linemap = _transpile_program(source, standalone=False,
                                      base_dir=base_dir)
-    ns = {"__name__": "_vax_main"}
+    ns = {
+        "__name__": "_vax_main",
+        "_VX_HOME": os.path.dirname(os.path.abspath(__file__)),
+    }
     exec(compile(py, "<vidyax>", "exec"), ns)
     try:
         ns["_main"]()
