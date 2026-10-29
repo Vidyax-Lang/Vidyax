@@ -22,7 +22,7 @@ typedef char vx_sa_tkmy_res_st[(offsetof(struct tkmy_result, status) == 0) ? 1 :
 typedef char vx_sa_tkmy_res_out[(offsetof(struct tkmy_result, out) == sizeof(size_t)) ? 1 : -1];
 typedef char vx_sa_tkmy_res_sz[(sizeof(struct tkmy_result) == 3 * sizeof(size_t)) ? 1 : -1];
 typedef char vx_sa_tkmy_in_cap[(TKMY_MAX_INPUT_BYTES == 1048576u) ? 1 : -1];
-typedef char vx_sa_tkmy_ast_cap[(TKMY_MAX_AST_BYTES == 262144u) ? 1 : -1];
+typedef char vx_sa_tkmy_ast_cap[(TKMY_MAX_AST_BYTES == 131072u) ? 1 : -1];
 typedef char vx_sa_tkmy_path_cap[(TKMY_MAX_PATH_BYTES == 4096u) ? 1 : -1];
 
 #ifdef VX_SUBCORTEX_NOOP
@@ -569,10 +569,9 @@ enum {
  * bounded by the 250 ms Tree-sitter progress_callback timeout):
  *   - redact:    512 + 2 * len   (167 B -> ~846 instr [6.5us]; 1 MiB -> ~2.10M instr [18.7ms])
  *   - prune_log: 1024 + 4 * len  (296 B -> ~2.2k instr [11.8us]; 1 MiB -> ~4.20M instr [41.9ms])
- *   - audit_ast: 3500 + 28 * len (156 B -> ~7.9k instr [46.7us]; 64 KiB -> ~1.84M instr [21.7ms];
- *   audit_ast: 3500 + 28 * bytes (156 B -> ~7.9k instr; 64 KiB -> ~1.84M instr [21.2ms];
- *                                 256 KiB cap -> ~7.34M instr [~81.6ms eq vs 85.6ms actual];
- *                                 >256 KiB rejected in O(1) with TKMY_TOO_LARGE) */
+ *   - audit_ast: 3500 + 28 * bytes (156 B -> ~7.9k instr; 64 KiB -> ~1.84M instr [~21ms];
+ *                                 128 KiB cap -> ~3.67M instr [~42ms i5-1235U / ~110ms N4020, >2x margin];
+ *                                 >128 KiB rejected in O(1) with TKMY_TOO_LARGE) */
 static void subcortex_charge_fuel(size_t input_bytes, int op_kind) {
     size_t max_cap = (op_kind == SUBCORTEX_FUEL_AUDIT)
         ? (size_t)(TKMY_MAX_AST_BYTES + TKMY_MAX_PATH_BYTES + 1)

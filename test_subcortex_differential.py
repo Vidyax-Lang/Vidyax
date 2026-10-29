@@ -70,10 +70,10 @@ def verify_cross_repo_abi_pin():
 
     limits = pin["limits"]
     assert int(limits["max_input_bytes"]) == 1048576
-    assert int(limits["max_ast_bytes"]) == 262144
+    assert int(limits["max_ast_bytes"]) == 131072
     assert int(limits["max_path_bytes"]) == 4096
-    assert "#define TKMY_MAX_AST_BYTES (256 * 1024)" in hdr_text, (
-        f"TKMY_MAX_AST_BYTES (256 * 1024) missing from {header_path}"
+    assert "#define TKMY_MAX_AST_BYTES (128 * 1024)" in hdr_text, (
+        f"TKMY_MAX_AST_BYTES (128 * 1024) missing from {header_path}"
     )
 
     with open(cargo_toml, "r", encoding="utf-8") as f:
@@ -507,7 +507,9 @@ print clean
             f.write(
                 b"PATH=/usr/bin\x00TOKEN=abc12345\x00HOME=/root\x00USER=nans\n"
                 b"APP_ENV=prod\x00DATABASE_URL=postgres://svc:hunter2@db:5432/app\x00HOME=/root\x00LANG=C\n"
-                b"worker\x00--api_key=sec99\x00--port\x008080"
+                b"worker\x00--api_key=sec99\x00--port\x008080\n"
+                b"TOKEN=abc\x00PASSWORD=hunter2\n"
+                b"TOKEN=abc\x00ghp_123456789012345678901234567890"
             )
         assert_all_4_engines(
             "nul_delimited_environ_and_cmdline_over_redact_tradeoff",
@@ -517,9 +519,11 @@ print subcortex_redact(raw)
 ''',
             allow_fs=True,
             expected_out=(
-                b"PATH=/usr/bin\x00TOKEN=[REDACTED]=/root\x00USER=nans\n"
-                b"APP_ENV=prod\x00DATABASE_URL=[CONNECTION_STRING_REDACTED]\n"
-                b"worker\x00--api_key=[REDACTED]\n"
+                b"PATH=/usr/bin\x00TOKEN=[REDACTED]\x00HOME=/root\x00USER=nans\n"
+                b"APP_ENV=prod\x00DATABASE_URL=[CONNECTION_STRING_REDACTED]\x00HOME=/root\x00LANG=C\n"
+                b"worker\x00--api_key=[REDACTED]\x00--port\x008080\n"
+                b"TOKEN=abc\x00PASSWORD=[REDACTED]\n"
+                b"TOKEN=abc\x00[GITHUB_TOKEN_REDACTED]\n"
             ),
         )
 
@@ -646,27 +650,28 @@ sandbox deny fs, net:
 
     # 5. Exact size cap boundaries:
     #    - redact / prune_log: 1 MiB (1,048,576 B) OK, 1,048,577 B TOO_LARGE
-    #    - audit_ast code:     256 KiB (262,144 B) OK (both comments & dense functions), 262,145 B & 1 MiB TOO_LARGE
+    #    - audit_ast code:     128 KiB (131,072 B) OK (both comments & dense functions), 131,073 B & 1 MiB TOO_LARGE
     #    - audit_ast path:     4 KiB (4,096 B) OK, 4,097 B TOO_LARGE
     assert_all_4_engines(
-        "exact_size_cap_boundaries_1mib_256kib_and_4kib",
+        "exact_size_cap_boundaries_1mib_128kib_and_4kib",
         r'''
-blk_256k: "#"
-rpt 18:
-    blk_256k: blk_256k + blk_256k
+blk_128k: "#"
+rpt 17:
+    blk_128k: blk_128k + blk_128k
 
+blk_256k: blk_128k + blk_128k
 blk_1m: blk_256k + blk_256k + blk_256k + blk_256k
 
 unit: "def f(a, b):\n    return a + b\n"
 dense: unit
-rpt 13:
+rpt 12:
     dense: dense + dense
-pad_len: 262144 - len(dense)
-dense_256k: dense + slice(blk_256k, 0, pad_len - 1) + "\n"
+pad_len: 131072 - len(dense)
+dense_128k: dense + slice(blk_128k, 0, pad_len - 1) + "\n"
 
 ok_red: subcortex_redact(blk_1m)
-ok_ast_comment: subcortex_audit_ast("cap.py", blk_256k)
-ok_ast_dense: subcortex_audit_ast("dense.py", dense_256k)
+ok_ast_comment: subcortex_audit_ast("cap.py", blk_128k)
+ok_ast_dense: subcortex_audit_ast("dense.py", dense_128k)
 
 over_1m: blk_1m + "#"
 err_red: ""
@@ -681,7 +686,7 @@ try:
 catch e2:
     err_prn: e2
 
-over_ast_256k: subcortex_audit_ast("cap.py", blk_256k + "#")
+over_ast_128k: subcortex_audit_ast("cap.py", blk_128k + "#")
 over_ast_1m: subcortex_audit_ast("cap.py", blk_1m)
 
 p: "a"
@@ -692,14 +697,14 @@ p_over: slice(p, 0, 4094) + ".py"
 pa_ok: subcortex_audit_ast(p_exact, "x = 1\n")
 pa_over: subcortex_audit_ast(p_over, "x = 1\n")
 
-print [len(ok_red), len(dense_256k), ok_ast_comment["code"], ok_ast_comment["status"], ok_ast_dense["code"], ok_ast_dense["status"]]
+print [len(ok_red), len(dense_128k), ok_ast_comment["code"], ok_ast_comment["status"], ok_ast_dense["code"], ok_ast_dense["status"]]
 print err_red
 print err_prn
-print [over_ast_256k["valid"], over_ast_256k["code"], over_ast_256k["status"], over_ast_1m["code"], over_ast_1m["status"]]
+print [over_ast_128k["valid"], over_ast_128k["code"], over_ast_128k["status"], over_ast_1m["code"], over_ast_1m["status"]]
 print [pa_ok["code"], pa_ok["status"], pa_over["code"], pa_over["status"]]
 ''',
         expected_out=(
-            "[1048576, 262144, 0, OK, 0, OK]\n"
+            "[1048576, 131072, 0, OK, 0, OK]\n"
             "subcortex_redact() failed: TOO_LARGE\n"
             "subcortex_prune() failed: TOO_LARGE\n"
             "[false, 5, TOO_LARGE, 5, TOO_LARGE]\n"
