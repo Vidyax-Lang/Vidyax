@@ -9,6 +9,7 @@ loop.vx
 .idea/
 .DS_Store
 vm/vxvm
+vxc
 *.vxc
 .claude/
 fuzz_failures/
