@@ -41,8 +41,8 @@ The Kronumos ecosystem combines:
 
 Together, these projects aim to create a connected environment where language design, compiler engineering, and AI-assisted software development reinforce one another.
 
-- [Kronumos](https://huggingface.co/Kronumos)
-- [Kronomus](https://github.com/Tokenectomy-Labs/Kronomus)
+- [Hugging Face](https://huggingface.co/Kronumos)
+- [Kronomus](https://kronumos.com/)
 - [Vidyax](https://github.com/Vidyax-Lang/Vidyax)
 
 ## Key Features
