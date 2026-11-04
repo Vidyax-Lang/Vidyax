@@ -19,7 +19,7 @@
 
 ## Introduction
 
-**Vidyax** is a programming language designed around a single idea: writing code should feel as natural as writing plain instructions. It began as a humble tree-walking interpreter in Python and has since evolved into a genuinely independent language, powered by its own bytecode compiler and a high-performance virtual machine written from scratch in C.
+**Vidyax** is a programming language designed around a single idea: writing code should feel as natural as writing plain instructions. It began as a humble tree-walking interpreter in Python and grew into a complete ecosystem of compilers, bytecode tooling, and AI-assisted execution.
 
 Vidyax is built to be three things at once:
 
@@ -27,11 +27,27 @@ Vidyax is built to be three things at once:
 - **Secure** — every program is verified before execution and runs inside a sandbox with configurable resource limits, making Vidyax safe for untrusted or educational environments.
 - **AI-native** — a first-class `ai` module lets programs query language models directly, treating AI as a built-in capability rather than an afterthought.
 
-Above all, Vidyax is an **educational** language: readable enough for a beginner's first program, yet architecturally complete enough to demonstrate how real languages work — from lexing and parsing all the way down to garbage collection and bytecode execution.
+Above all, Vidyax is an **educational** language: readable enough for a beginner's first program, yet architecturally complete enough to demonstrate how real languages work — from lexing and parsing to bytecode verification and execution.
+
+## Kronumos Ecosystem
+
+Vidyax is part of the broader **Kronumos ecosystem** — a vision of autonomous, AI-native software engineering built around verifiable tools, high-performance runtimes, and intelligent developer workflows.
+
+The Kronumos ecosystem combines:
+
+- **Vidyax** — an AI-native programming language with its own compiler and virtual machine.
+- **Kronumos AI tools** — autonomous systems for software repair, debugging, and code understanding.
+- **Developer-first automation** — workflows designed to make building, validating, and shipping software more reliable and more intelligent.
+
+Together, these projects aim to create a connected environment where language design, compiler engineering, and AI-assisted software development reinforce one another.
+
+- [Hugging Face](https://huggingface.co/Kronumos)
+- [Kronomus](https://kronumos.com/)
+- [Vidyax](https://github.com/Vidyax-Lang/Vidyax)
 
 ## Key Features
 
-- 🔁 **Four Verified Engines** — a tree-walker, a Python transpiler, a C bytecode VM, and an **ahead-of-time native compiler** all run the same programs through a shared differential test suite (plus a differential fuzzer), guaranteeing identical behavior across every execution path.
+- 🔁 **Four Verified Engines** — a tree-walker, a Python transpiler, a C bytecode VM, and an **ahead-of-time native compiler** all run the same programs through a shared differential test suite.
 - 🚀 **Custom C Virtual Machine (VVM)** — a stack-based bytecode interpreter written entirely in C, outpacing the Python transpiler by a wide margin.
 - 🏎️ **Native Backend** — `vidyax native` compiles a program to a standalone C binary (no runtime needed) that runs ~2.6× faster than the VM and ~36× faster than the transpiler.
 - ⚙️ **Optimizing Compiler** — constant folding, dead-code elimination, peephole, function inlining, escape analysis, and a basic-block CFG layer, all behavior-preserving.
@@ -41,7 +57,7 @@ Above all, Vidyax is an **educational** language: readable enough for a beginner
 - 🛡️ **Sandbox & Verifier** — every compiled program is validated (opcodes, operands, jump targets) before it runs, with optional instruction/memory/time limits for untrusted code.
 - 🤖 **Built-in AI Module** — query language models directly from your code with a clean, minimal API.
 - 🤖 **Official AI Assistant** — `vidyax-coder-7b` fine-tuned on Hugging Face for generating and explaining Vidyax code.
-- 🧰 **Full Toolchain** — an interactive REPL, a line debugger (`vidyax debug`), a profiler (`vidyax profile`), a disassembler (`vidyax disasm`), a Language Server (`vidyax lsp`), and a published VS Code extension.
+- 🧰 **Full Toolchain** — an interactive REPL, a line debugger (`vidyax debug`), a profiler (`vidyax profile`), a disassembler (`vidyax disasm`), a Language Server (`vidyax lsp`), and a publication pipeline for packages and docs.
 
 ## Architecture Overview
 
@@ -66,7 +82,7 @@ Vidyax follows a classic, staged compilation pipeline. Source code is transforme
                                                        Result
 ```
 
-The Python-based front end (lexer, parser, and semantic analysis) is shared across every engine, ensuring the language behaves identically whether interpreted directly, compiled to bytecode, or compiled to a native binary. The C virtual machine handles verification, garbage collection, and sandbox enforcement; the native backend reuses the same runtime modules, so values, GC, and built-ins are identical by construction.
+The Python-based front end (lexer, parser, and semantic analysis) is shared across every engine, ensuring the language behaves identically whether interpreted directly, compiled to bytecode, or converted to native code.
 
 ## Syntax & Usage Examples
 
@@ -191,7 +207,7 @@ python3 fuzz.py             # differential fuzzer across engines
 
 Vidyax ships with an official AI coding assistant fine-tuned specifically for the language.
 
-**Vidyax Coder 7B** is a Qwen 7B-based model trained on curated Vidyax code, capable of generating code, explaining errors, and refactoring programs with full understanding of Vidyax's unique syntax — including `go`/`wait` concurrency, the `use` module system, and the built-in `ai` module.
+**Vidyax Coder 7B** is a Qwen 7B-based model trained on curated Vidyax code, capable of generating code, explaining errors, and refactoring programs with full understanding of Vidyax's unique syntax and runtime model.
 
 ```python
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -217,11 +233,11 @@ You can also install it directly from the [Visual Studio Marketplace](https://ma
 
 ## Contributing
 
-Contributions, bug reports, and feature requests are welcome. Feel free to open an [issue](https://github.com/Vidyax-Lang/Vidyax/issues) or submit a pull request. Every new language feature is expected to pass the differential test suite, ensuring all engines remain consistent.
+Contributions, bug reports, and feature requests are welcome. Feel free to open an [issue](https://github.com/Vidyax-Lang/Vidyax/issues) or submit a pull request. Every new language feature is expected to be verified against the shared test suite before merging.
 
 ## License
 
-Copyright © 2026 NaDev (Daffa).
+Copyright © 2026 Tokenectomy Labs.
 
 This project is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](https://github.com/Vidyax-Lang/Vidyax/blob/main/LICENSE).
 
@@ -229,6 +245,6 @@ This project is licensed under the [GNU Affero General Public License v3.0 (AGPL
 
 <div align="center">
 
-**Built by [NaDev](https://github.com/daffa2555)** 
+**Built by [Tokenectomy Labs](https://github.com/Tokenectomy-Labs)**
 
 </div>
