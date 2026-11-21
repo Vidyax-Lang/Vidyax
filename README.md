@@ -234,12 +234,7 @@ You can also install it directly from the [Visual Studio Marketplace](https://ma
 
 Contributions, bug reports, and feature requests are welcome. Feel free to open an [issue](https://github.com/Vidyax-Lang/Vidyax/issues) or submit a pull request. Every new language feature is expected to be verified against the shared test suite before merging.
 
-## License
-
 Copyright © 2026 Tokenectomy Labs.
-
-This project is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](https://github.com/Vidyax-Lang/Vidyax/blob/main/LICENSE).
-
 ---
 
 <div align="center">
