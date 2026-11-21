@@ -29,7 +29,7 @@ def supported(src):
     return ".ask" not in src
 
 
-def run_vm(src):
+def run_vm(src, prog_args=None):
     """Compile + run on the VM. Returns (stdout, error_msg_or_None)."""
     with tempfile.NamedTemporaryFile(suffix=".vxc", delete=False) as f:
         path = f.name
@@ -41,7 +41,8 @@ def run_vm(src):
     try:
         with open(path, "wb") as f:
             f.write(c.serialize())
-        r = subprocess.run([VM] + VM_FLAGS + [path], capture_output=True, text=True,
+        cmd = [VM] + VM_FLAGS + [path] + (prog_args or [])
+        r = subprocess.run(cmd, capture_output=True, text=True,
                            timeout=30)
         out = r.stdout
         err = None
@@ -126,7 +127,81 @@ def main():
         failed += 1
         print(f"  FAIL vm-sandbox fs-deny: out={out!r} err={err!r}")
 
-    total = len(CASES) + len(ERROR_CASES) + len(GO_CASES) + 1
+    # self-hosting builtins: f64bytes, utf8bytes, writebytes, args
+    extra_tests = 0
+
+    # 1. f64bytes: 0, 1.5, -42.25
+    extra_tests += 1
+    out, err = run_vm('print f64bytes(0)\nprint f64bytes(1.5)\nprint f64bytes(-42.25)\n')
+    want_f64 = (
+        "[0, 0, 0, 0, 0, 0, 0, 0]\n"
+        "[0, 0, 0, 0, 0, 0, 248, 63]\n"
+        "[0, 0, 0, 0, 0, 32, 69, 192]\n"
+    )
+    if err is None and out == want_f64:
+        passed += 1
+        print("  PASS vm-builtin f64bytes")
+    else:
+        failed += 1
+        print(f"  FAIL vm-builtin f64bytes: out={out!r} err={err!r}")
+
+    # 2. utf8bytes: empty, ASCII, multibyte UTF-8
+    extra_tests += 1
+    out, err = run_vm('print utf8bytes("")\nprint utf8bytes("VXC1")\nprint utf8bytes("é")\n')
+    want_utf8 = "[]\n[86, 88, 67, 49]\n[195, 169]\n"
+    if err is None and out == want_utf8:
+        passed += 1
+        print("  PASS vm-builtin utf8bytes")
+    else:
+        failed += 1
+        print(f"  FAIL vm-builtin utf8bytes: out={out!r} err={err!r}")
+
+    # 3. writebytes: binary round-trip + empty list + out-of-range error + fs-deny
+    extra_tests += 1
+    with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as tf:
+        bin_path = tf.name
+    try:
+        out, err = run_vm(f'writebytes("{bin_path}", [86, 88, 67, 49, 0, 255])\n')
+        with open(bin_path, "rb") as bf:
+            raw = bf.read()
+        out2, err2 = run_vm(f'writebytes("{bin_path}", [])\n')
+        with open(bin_path, "rb") as bf:
+            raw2 = bf.read()
+        _, err3 = run_vm(f'writebytes("{bin_path}", [256])\n')
+        saved = VM_FLAGS[:]
+        try:
+            VM_FLAGS.remove("--allow-fs")
+            _, err4 = run_vm(f'writebytes("{bin_path}", [1])\n')
+        finally:
+            VM_FLAGS[:] = saved
+        ok = (
+            err is None and raw == b"VXC1\x00\xff"
+            and err2 is None and raw2 == b""
+            and err3 is not None and "out of range" in err3
+            and err4 is not None and "file access is not allowed" in err4
+        )
+        if ok:
+            passed += 1
+            print("  PASS vm-builtin writebytes")
+        else:
+            failed += 1
+            print(f"  FAIL vm-builtin writebytes: raw={raw!r} raw2={raw2!r} errs={(err, err2, err3, err4)!r}")
+    finally:
+        if os.path.exists(bin_path):
+            os.unlink(bin_path)
+
+    # 4. args(): empty and multiple args (including flag-like args after .vxc)
+    extra_tests += 1
+    out0, err0 = run_vm('print args()\n')
+    out1, err1 = run_vm('print args()\n', prog_args=["in.vx", "-o", "out.vxc"])
+    if err0 is None and out0 == "[]\n" and err1 is None and out1 == "[in.vx, -o, out.vxc]\n":
+        passed += 1
+        print("  PASS vm-builtin args")
+    else:
+        failed += 1
+        print(f"  FAIL vm-builtin args: out0={out0!r} err0={err0!r} out1={out1!r} err1={err1!r}")
+
+    total = len(CASES) + len(ERROR_CASES) + len(GO_CASES) + 1 + extra_tests
     print(f"\nVM: {passed} passed, {failed} failed, {skipped} skipped "
           f"(network — ai.ask) of {total}")
     if failed:

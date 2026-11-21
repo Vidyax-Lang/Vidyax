@@ -227,6 +227,73 @@ static Value b_writefile(int argc, Value *a) {
     if (failed) vm_error("writefile() failed: %s", strerror(saved_errno));
     return vnull();
 }
+static Value b_writebytes(int argc, Value *a) {
+    need_fs();
+    if (argc != 2 || a[0].t != V_STR || a[1].t != V_LIST)
+        vm_error("writebytes() needs a text path and a list of bytes");
+    OList *l = AS_LIST(a[1]);
+    uint32_t count = l->count;
+    const char *path = AS_STR(a[0])->chars;
+    uint8_t *buf = NULL;
+    if (count > 0) {
+        buf = (uint8_t *)malloc(count);
+        if (!buf) vm_error("writebytes() out of memory");
+        for (uint32_t i = 0; i < count; i++) {
+            if (!numlike(l->items[i])) {
+                free(buf);
+                vm_error("writebytes() list must contain numbers");
+            }
+            double d = as_num(l->items[i]);
+            if (isnan(d) || isinf(d) || d < 0.0 || d > 255.0 || floor(d) != d) {
+                free(buf);
+                vm_error("writebytes() byte out of range (0..255)");
+            }
+            buf[i] = (uint8_t)d;
+        }
+    }
+    int failed = 0, saved_errno = 0;
+    VX_UNLOCK();
+    FILE *f = fopen(path, "wb");
+    if (!f) { failed = 1; saved_errno = errno; }
+    else {
+        size_t written = (count > 0) ? fwrite(buf, 1, count, f) : 0;
+        if (written != count) {
+            failed = 1; saved_errno = errno;
+            fclose(f);
+        } else if (fclose(f) != 0) {
+            failed = 1; saved_errno = errno;
+        }
+    }
+    VX_LOCK();
+    free(buf);
+    if (failed) vm_error("writebytes() failed: %s", strerror(saved_errno));
+    return vnull();
+}
+static Value b_f64bytes(int argc, Value *a) {
+    if (argc != 1 || !numlike(a[0])) vm_error("f64bytes() needs a number");
+    double d = as_num(a[0]);
+    uint8_t bytes[8];
+    memcpy(bytes, &d, 8);
+    OList *l = new_list(8);
+    for (int i = 0; i < 8; i++) list_push(l, vnum((double)bytes[i]));
+    return vlist_o(l);
+}
+static Value b_utf8bytes(int argc, Value *a) {
+    if (argc != 1 || a[0].t != V_STR) vm_error("utf8bytes() needs text");
+    OStr *s = AS_STR(a[0]);
+    OList *l = new_list(s->len > 0 ? s->len : 1);
+    for (uint32_t i = 0; i < s->len; i++)
+        list_push(l, vnum((double)(uint8_t)s->chars[i]));
+    return vlist_o(l);
+}
+static Value b_args(int argc, Value *a) {
+    (void)a;
+    if (argc != 0) vm_error("args() takes no arguments");
+    OList *l = new_list(vx_argc > 0 ? (uint32_t)vx_argc : 1);
+    for (int i = 0; i < vx_argc; i++)
+        list_push(l, vstr_o(new_str(vx_argv[i], (uint32_t)strlen(vx_argv[i]))));
+    return vlist_o(l);
+}
 static Value b_floor(int argc, Value *a) {
     if (argc != 1 || !numlike(a[0])) vm_error("floor() needs a number");
     return vnum(floor(as_num(a[0])));
@@ -777,6 +844,8 @@ Builtin BUILTINS[] = {
     {"join", b_join}, {"push", b_push}, {"abs", b_abs}, {"sum", b_sum},
     {"min", b_min}, {"max", b_max}, {"type", b_type}, {"get", b_get},
     {"readfile", b_readfile}, {"writefile", b_writefile},
+    {"writebytes", b_writebytes}, {"f64bytes", b_f64bytes},
+    {"utf8bytes", b_utf8bytes}, {"args", b_args},
     {"floor", b_floor}, {"ceil", b_ceil}, {"round", b_round},
     {"sqrt", b_sqrt}, {"pow", b_pow}, {"random", b_random},
     {"replace", b_replace}, {"trim", b_trim}, {"contains", b_contains},

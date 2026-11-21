@@ -1,0 +1,1251 @@
+# vxc.vx — Self-hosted VidyaX bytecode compiler (.vx -> VXC1 v3 .vxc)
+#
+# Usage:
+#   vm/vxvm --allow-fs vxc.vxc <input.vx> <output.vxc>
+
+# ---- Opcodes (must match vm/vx.h) ----
+OP_CONST: 1
+OP_NULL: 2
+OP_TRUE: 3
+OP_FALSE: 4
+OP_POP: 5
+OP_LOAD: 6
+OP_STORE: 7
+OP_ADD: 8
+OP_SUB: 9
+OP_MUL: 10
+OP_DIV: 11
+OP_MOD: 12
+OP_NEG: 13
+OP_EQ: 14
+OP_NE: 15
+OP_LT: 16
+OP_LE: 17
+OP_GT: 18
+OP_GE: 19
+OP_NOT: 20
+OP_JMP: 21
+OP_JMP_IF_FALSE: 22
+OP_JIF_PEEK: 23
+OP_JIT_PEEK: 24
+OP_LIST: 25
+OP_INDEX: 26
+OP_CALL: 27
+OP_MAKE_FUNC: 28
+OP_RET: 29
+OP_PRINT: 30
+OP_ASK: 31
+OP_CHECK_RPT: 32
+OP_CHECK_ITER: 33
+OP_LEN: 34
+OP_TRY_PUSH: 35
+OP_TRY_POP: 36
+OP_HALT: 37
+OP_DICT: 38
+OP_AI_NEW: 41
+OP_GET_MEMBER: 42
+OP_GO: 43
+OP_AGENT: 44
+OP_SBOX_ENTER: 45
+OP_SBOX_EXIT: 46
+
+func fail(msg):
+    print msg
+    x: 1 / 0
+
+# ---- Character helpers ----
+func is_digit(c):
+    return contains("0123456789", c)
+
+func is_alpha(c):
+    return contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", c)
+
+func is_alnum(c):
+    return is_alpha(c) or is_digit(c)
+
+KEYWORDS: {
+    "func": 1, "if": 1, "elif": 1, "else": 1,
+    "rpt": 1, "for": 1, "in": 1,
+    "return": 1, "break": 1, "continue": 1, "print": 1,
+    "true": 1, "false": 1, "null": 1,
+    "and": 1, "or": 1, "not": 1,
+    "try": 1, "catch": 1, "use": 1,
+    "agent": 1, "sandbox": 1, "go": 1, "ask": 1
+}
+
+# ---- Lexer ----
+func lex(src):
+    tokens: []
+    indents: [0]
+    lines: split(src, "\n")
+    nlines: len(lines)
+    li: 0
+    rpt nlines:
+        raw: lines[li]
+        li: li + 1
+        rlen: len(raw)
+        if rlen > 0 and utf8bytes(raw[rlen - 1])[0] == 13:
+            raw: slice(raw, 0, rlen - 1)
+            rlen: rlen - 1
+
+        # Measure leading spaces
+        pos: 0
+        rpt rlen:
+            if pos >= rlen:
+                break
+            ch: raw[pos]
+            if ch == " ":
+                pos: pos + 1
+            elif ch == "\t":
+                pos: pos + 1
+            else:
+                break
+
+        # Skip blank or comment-only lines
+        if pos >= rlen or raw[pos] == "#":
+            continue
+
+        # Indentation changes
+        cur_ind: indents[len(indents) - 1]
+        if pos > cur_ind:
+            push(indents, pos)
+            push(tokens, ["INDENT", "", li])
+        elif pos < cur_ind:
+            rpt 1000:
+                top: indents[len(indents) - 1]
+                if top <= pos:
+                    break
+                pop(indents)
+                push(tokens, ["DEDENT", "", li])
+
+        # Scan tokens on this line
+        rpt rlen + 1:
+            if pos >= rlen:
+                break
+            ch: raw[pos]
+            if ch == " " or ch == "\t":
+                pos: pos + 1
+                continue
+            if ch == "#":
+                break
+
+            # String literal
+            if ch == "\"":
+                pos: pos + 1
+                parts: []
+                rpt rlen + 1:
+                    if pos >= rlen:
+                        break
+                    c2: raw[pos]
+                    if c2 == "\"":
+                        pos: pos + 1
+                        break
+                    if c2 == "\\" and pos + 1 < rlen:
+                        pos: pos + 1
+                        esc: raw[pos]
+                        if esc == "n":
+                            push(parts, "\n")
+                        elif esc == "t":
+                            push(parts, "\t")
+                        elif esc == "r":
+                            push(parts, "\r")
+                        elif esc == "\\":
+                            push(parts, "\\")
+                        elif esc == "\"":
+                            push(parts, "\"")
+                        else:
+                            push(parts, esc)
+                        pos: pos + 1
+                    else:
+                        push(parts, c2)
+                        pos: pos + 1
+                push(tokens, ["STR", join(parts, ""), li])
+                continue
+
+            # Number literal
+            if is_digit(ch):
+                start: pos
+                has_dot: false
+                rpt rlen + 1:
+                    if pos >= rlen:
+                        break
+                    c2: raw[pos]
+                    if is_digit(c2):
+                        pos: pos + 1
+                    elif c2 == "." and not has_dot and pos + 1 < rlen and is_digit(raw[pos + 1]):
+                        has_dot: true
+                        pos: pos + 1
+                    else:
+                        break
+                push(tokens, ["NUM", num(slice(raw, start, pos)), li])
+                continue
+
+            # Identifier or keyword
+            if is_alpha(ch):
+                start: pos
+                rpt rlen + 1:
+                    if pos >= rlen:
+                        break
+                    if is_alnum(raw[pos]):
+                        pos: pos + 1
+                    else:
+                        break
+                word: slice(raw, start, pos)
+                if has(KEYWORDS, word):
+                    push(tokens, [word, word, li])
+                else:
+                    push(tokens, ["IDENT", word, li])
+                continue
+
+            # Two-char operators
+            if pos + 1 < rlen:
+                two: slice(raw, pos, pos + 2)
+                if two == "==" or two == "!=" or two == "<=" or two == ">=":
+                    push(tokens, [two, two, li])
+                    pos: pos + 2
+                    continue
+
+            # Single-char operators / punctuation
+            push(tokens, [ch, ch, li])
+            pos: pos + 1
+
+        push(tokens, ["NEWLINE", "", li])
+
+    # Close remaining indents
+    rpt len(indents):
+        if len(indents) <= 1:
+            break
+        pop(indents)
+        push(tokens, ["DEDENT", "", nlines])
+
+    push(tokens, ["EOF", "", nlines])
+    return tokens
+
+# ---- Parser ----
+func make_parser(tokens):
+    return {"toks": tokens, "pos": 0}
+
+func p_cur(p):
+    return p["toks"][p["pos"]]
+
+func p_kind(p):
+    return p["toks"][p["pos"]][0]
+
+func p_peek(p, off):
+    idx: p["pos"] + off
+    if idx >= len(p["toks"]):
+        return "EOF"
+    return p["toks"][idx][0]
+
+func p_adv(p):
+    t: p["toks"][p["pos"]]
+    set(p, "pos", p["pos"] + 1)
+    return t
+
+func p_expect(p, kind):
+    t: p_cur(p)
+    if t[0] != kind:
+        fail("Parse error at line " + text(t[2]) + ": expected " + kind + ", got " + t[0])
+    set(p, "pos", p["pos"] + 1)
+    return t
+
+func skip_newlines(p):
+    rpt 100000:
+        if p_kind(p) == "NEWLINE":
+            p_adv(p)
+        else:
+            break
+
+func parse_program(tokens):
+    p: make_parser(tokens)
+    stmts: []
+    skip_newlines(p)
+    rpt 100000:
+        if p_kind(p) == "EOF":
+            break
+        push(stmts, parse_stmt(p))
+        skip_newlines(p)
+    return stmts
+
+func parse_block(p):
+    p_expect(p, ":")
+    p_expect(p, "NEWLINE")
+    p_expect(p, "INDENT")
+    stmts: []
+    skip_newlines(p)
+    rpt 100000:
+        k: p_kind(p)
+        if k == "DEDENT" or k == "EOF":
+            break
+        push(stmts, parse_stmt(p))
+        skip_newlines(p)
+    if p_kind(p) == "DEDENT":
+        p_adv(p)
+    return stmts
+
+func parse_stmt(p):
+    k: p_kind(p)
+    line: p_cur(p)[2]
+
+    if k == "func":
+        p_adv(p)
+        name: p_expect(p, "IDENT")[1]
+        p_expect(p, "(")
+        params: []
+        if p_kind(p) != ")":
+            push(params, p_expect(p, "IDENT")[1])
+            rpt 1000:
+                if p_kind(p) != ",":
+                    break
+                p_adv(p)
+                push(params, p_expect(p, "IDENT")[1])
+        p_expect(p, ")")
+        body: parse_block(p)
+        return {"t": "FuncDef", "name": name, "params": params, "body": body, "line": line}
+
+    if k == "if":
+        p_adv(p)
+        cond: parse_expr(p)
+        body: parse_block(p)
+        elifs: []
+        rpt 1000:
+            if p_kind(p) != "elif":
+                break
+            p_adv(p)
+            ec: parse_expr(p)
+            eb: parse_block(p)
+            push(elifs, [ec, eb])
+        orelse: []
+        if p_kind(p) == "else":
+            p_adv(p)
+            orelse: parse_block(p)
+        # Fold elifs into nested If nodes from back to front
+        i: len(elifs) - 1
+        rpt len(elifs):
+            pair: elifs[i]
+            orelse: [{"t": "If", "cond": pair[0], "body": pair[1], "orelse": orelse, "line": line}]
+            i: i - 1
+        return {"t": "If", "cond": cond, "body": body, "orelse": orelse, "line": line}
+
+    if k == "rpt":
+        p_adv(p)
+        cnt: parse_expr(p)
+        body: parse_block(p)
+        return {"t": "RepeatN", "count": cnt, "body": body, "line": line}
+
+    if k == "for":
+        p_adv(p)
+        vname: p_expect(p, "IDENT")[1]
+        p_expect(p, "in")
+        it: parse_expr(p)
+        body: parse_block(p)
+        return {"t": "ForEach", "var": vname, "iter": it, "body": body, "line": line}
+
+    if k == "return":
+        p_adv(p)
+        val: null
+        if p_kind(p) != "NEWLINE" and p_kind(p) != "EOF" and p_kind(p) != "DEDENT":
+            val: parse_expr(p)
+        if p_kind(p) == "NEWLINE":
+            p_adv(p)
+        return {"t": "Return", "value": val, "line": line}
+
+    if k == "break":
+        p_adv(p)
+        if p_kind(p) == "NEWLINE":
+            p_adv(p)
+        return {"t": "Break", "line": line}
+
+    if k == "continue":
+        p_adv(p)
+        if p_kind(p) == "NEWLINE":
+            p_adv(p)
+        return {"t": "Continue", "line": line}
+
+    if k == "print":
+        p_adv(p)
+        ex: parse_expr(p)
+        if p_kind(p) == "NEWLINE":
+            p_adv(p)
+        return {"t": "Print", "expr": ex, "line": line}
+
+    if k == "try":
+        p_adv(p)
+        try_body: parse_block(p)
+        skip_newlines(p)
+        if p_kind(p) != "catch":
+            fail("Parse error at line " + text(p_cur(p)[2]) + ": 'try' must be followed by 'catch'")
+        p_adv(p)
+        err_var: null
+        if p_kind(p) == "IDENT":
+            err_var: p_adv(p)[1]
+        catch_body: parse_block(p)
+        return {"t": "TryCatch", "try_body": try_body, "err_var": err_var, "catch_body": catch_body, "line": line}
+
+    if k == "use":
+        p_adv(p)
+        name: p_expect(p, "IDENT")[1]
+        rpt 100:
+            if p_kind(p) != "/":
+                break
+            p_adv(p)
+            name: name + "/" + p_expect(p, "IDENT")[1]
+        if p_kind(p) == "NEWLINE":
+            p_adv(p)
+        return {"t": "Import", "name": name, "line": line}
+
+    if k == "agent":
+        p_adv(p)
+        name: p_expect(p, "IDENT")[1]
+        p_expect(p, ":")
+        p_expect(p, "NEWLINE")
+        p_expect(p, "INDENT")
+        model: null
+        sys_p: null
+        skip_newlines(p)
+        rpt 1000:
+            if p_kind(p) == "DEDENT" or p_kind(p) == "EOF":
+                break
+            kt: p_cur(p)
+            if kt[0] != "IDENT" or (kt[1] != "model" and kt[1] != "system"):
+                fail("Parse error at line " + text(kt[2]) + ": inside 'agent', only 'model' and 'system' lines are allowed")
+            p_adv(p)
+            val: parse_expr(p)
+            if p_kind(p) == "NEWLINE":
+                p_adv(p)
+            if kt[1] == "model":
+                model: val
+            else:
+                sys_p: val
+            skip_newlines(p)
+        if p_kind(p) == "DEDENT":
+            p_adv(p)
+        return {"t": "AgentDef", "name": name, "model": model, "system": sys_p, "line": line}
+
+    if k == "sandbox":
+        p_adv(p)
+        wt: p_cur(p)
+        if wt[0] != "IDENT" or wt[1] != "deny":
+            fail("Parse error at line " + text(wt[2]) + ": expected 'deny' after 'sandbox'")
+        p_adv(p)
+        denies: []
+        rpt 100:
+            pt: p_cur(p)
+            if pt[0] != "IDENT" or (pt[1] != "net" and pt[1] != "fs"):
+                fail("Parse error at line " + text(pt[2]) + ": sandbox can deny 'net' and/or 'fs'")
+            p_adv(p)
+            push(denies, pt[1])
+            if p_kind(p) == ",":
+                p_adv(p)
+            else:
+                break
+        body: parse_block(p)
+        return {"t": "Sandbox", "denies": denies, "body": body, "line": line}
+
+    if k == "IDENT" and p_peek(p, 1) == ":":
+        name: p_adv(p)[1]
+        p_adv(p)
+        val: parse_expr(p)
+        if p_kind(p) == "NEWLINE":
+            p_adv(p)
+        return {"t": "Assign", "name": name, "value": val, "line": line}
+
+    ex: parse_expr(p)
+    if p_kind(p) == "NEWLINE":
+        p_adv(p)
+    return {"t": "ExprStmt", "expr": ex, "line": line}
+
+func parse_expr(p):
+    return parse_or(p)
+
+func parse_or(p):
+    left: parse_and(p)
+    rpt 1000:
+        if p_kind(p) != "or":
+            break
+        p_adv(p)
+        right: parse_and(p)
+        left: {"t": "BinOp", "op": "or", "l": left, "r": right}
+    return left
+
+func parse_and(p):
+    left: parse_not(p)
+    rpt 1000:
+        if p_kind(p) != "and":
+            break
+        p_adv(p)
+        right: parse_not(p)
+        left: {"t": "BinOp", "op": "and", "l": left, "r": right}
+    return left
+
+func parse_not(p):
+    if p_kind(p) == "not":
+        p_adv(p)
+        return {"t": "UnaryOp", "op": "not", "operand": parse_not(p)}
+    return parse_cmp(p)
+
+func parse_cmp(p):
+    left: parse_add(p)
+    rpt 1000:
+        k: p_kind(p)
+        if k == "==" or k == "!=" or k == "<" or k == "<=" or k == ">" or k == ">=":
+            p_adv(p)
+            right: parse_add(p)
+            left: {"t": "BinOp", "op": k, "l": left, "r": right}
+        else:
+            break
+    return left
+
+func parse_add(p):
+    left: parse_mul(p)
+    rpt 1000:
+        k: p_kind(p)
+        if k == "+" or k == "-":
+            p_adv(p)
+            right: parse_mul(p)
+            left: {"t": "BinOp", "op": k, "l": left, "r": right}
+        else:
+            break
+    return left
+
+func parse_mul(p):
+    left: parse_unary(p)
+    rpt 1000:
+        k: p_kind(p)
+        if k == "*" or k == "/" or k == "%":
+            p_adv(p)
+            right: parse_unary(p)
+            left: {"t": "BinOp", "op": k, "l": left, "r": right}
+        else:
+            break
+    return left
+
+func parse_unary(p):
+    if p_kind(p) == "-":
+        p_adv(p)
+        return {"t": "UnaryOp", "op": "-", "operand": parse_unary(p)}
+    if p_kind(p) == "go":
+        t: p_adv(p)
+        call: parse_postfix(p)
+        if call["t"] != "Call":
+            fail("Parse error at line " + text(t[2]) + ": 'go' needs a function call")
+        return {"t": "GoTask", "call": call}
+    return parse_postfix(p)
+
+func parse_postfix(p):
+    node: parse_primary(p)
+    rpt 1000:
+        k: p_kind(p)
+        if k == "(":
+            p_adv(p)
+            cargs: []
+            if p_kind(p) != ")":
+                push(cargs, parse_expr(p))
+                rpt 1000:
+                    if p_kind(p) != ",":
+                        break
+                    p_adv(p)
+                    push(cargs, parse_expr(p))
+            p_expect(p, ")")
+            node: {"t": "Call", "callee": node, "args": cargs}
+        elif k == "[":
+            p_adv(p)
+            idx: parse_expr(p)
+            p_expect(p, "]")
+            node: {"t": "Index", "obj": node, "idx": idx}
+        elif k == ".":
+            p_adv(p)
+            nt: p_cur(p)
+            if nt[0] == "IDENT" or has(KEYWORDS, nt[0]):
+                mname: p_adv(p)[1]
+            else:
+                fail("Parse error at line " + text(nt[2]) + ": expected member name after '.'")
+            member: {"t": "Member", "obj": node, "name": mname}
+            nk: p_kind(p)
+            if nk == "NUM" or nk == "STR" or nk == "IDENT" or nk == "true" or nk == "false" or nk == "null" or nk == "[":
+                arg: parse_expr(p)
+                node: {"t": "Call", "callee": member, "args": [arg]}
+            else:
+                node: member
+        else:
+            break
+    return node
+
+func parse_primary(p):
+    t: p_cur(p)
+    k: t[0]
+    if k == "NUM":
+        p_adv(p)
+        return {"t": "Num", "v": t[1]}
+    if k == "STR":
+        p_adv(p)
+        return {"t": "Str", "v": t[1]}
+    if k == "true":
+        p_adv(p)
+        return {"t": "Bool", "v": true}
+    if k == "false":
+        p_adv(p)
+        return {"t": "Bool", "v": false}
+    if k == "null":
+        p_adv(p)
+        return {"t": "Null"}
+    if k == "ask":
+        p_adv(p)
+        return {"t": "Input", "prompt": parse_unary(p)}
+    if k == "IDENT":
+        p_adv(p)
+        return {"t": "Var", "name": t[1]}
+    if k == "(":
+        p_adv(p)
+        ex: parse_expr(p)
+        p_expect(p, ")")
+        return ex
+    if k == "[":
+        p_adv(p)
+        items: []
+        skip_nl_ws(p)
+        if p_kind(p) != "]":
+            push(items, parse_expr(p))
+            rpt 10000:
+                skip_nl_ws(p)
+                if p_kind(p) != ",":
+                    break
+                p_adv(p)
+                skip_nl_ws(p)
+                if p_kind(p) == "]":
+                    break
+                push(items, parse_expr(p))
+        p_expect(p, "]")
+        return {"t": "ListLit", "items": items}
+    if k == "{":
+        p_adv(p)
+        pairs: []
+        skip_nl_ws(p)
+        if p_kind(p) != "}":
+            k1: parse_expr(p)
+            p_expect(p, ":")
+            v1: parse_expr(p)
+            push(pairs, [k1, v1])
+            rpt 10000:
+                skip_nl_ws(p)
+                if p_kind(p) != ",":
+                    break
+                p_adv(p)
+                skip_nl_ws(p)
+                if p_kind(p) == "}":
+                    break
+                kn: parse_expr(p)
+                p_expect(p, ":")
+                vn: parse_expr(p)
+                push(pairs, [kn, vn])
+        p_expect(p, "}")
+        return {"t": "DictLit", "pairs": pairs}
+    fail("Unexpected token at line " + text(t[2]) + ": " + k)
+    return {"t": "Null"}
+
+func skip_nl_ws(p):
+    rpt 1000:
+        k: p_kind(p)
+        if k == "NEWLINE" or k == "INDENT" or k == "DEDENT":
+            p_adv(p)
+        else:
+            break
+
+# ---- Bytecode Emitter & Serializer ----
+func emit_u8(buf, v):
+    push(buf, v % 256)
+
+func emit_u16(buf, v):
+    push(buf, v % 256)
+    push(buf, floor(v / 256) % 256)
+
+func emit_u32(buf, v):
+    push(buf, v % 256)
+    push(buf, floor(v / 256) % 256)
+    push(buf, floor(v / 65536) % 256)
+    push(buf, floor(v / 16777216) % 256)
+
+func patch_u32(buf, off, v):
+    pop(buf, off)
+    insert(buf, off, v % 256)
+    pop(buf, off + 1)
+    insert(buf, off + 1, floor(v / 256) % 256)
+    pop(buf, off + 2)
+    insert(buf, off + 2, floor(v / 65536) % 256)
+    pop(buf, off + 3)
+    insert(buf, off + 3, floor(v / 16777216) % 256)
+
+func make_compiler():
+    return {
+        "consts": [],
+        "str_map": {},
+        "num_map": {},
+        "protos": [],
+        "tmp_id": 0
+    }
+
+func add_str_const(c, s):
+    if has(c["str_map"], s):
+        return c["str_map"][s]
+    idx: len(c["consts"])
+    push(c["consts"], [2, s])
+    set(c["str_map"], s, idx)
+    return idx
+
+func add_num_const(c, n):
+    key: text(n)
+    if has(c["num_map"], key):
+        return c["num_map"][key]
+    idx: len(c["consts"])
+    push(c["consts"], [1, n])
+    set(c["num_map"], key, idx)
+    return idx
+
+func next_tmp(c, prefix):
+    id: c["tmp_id"]
+    set(c, "tmp_id", id + 1)
+    return prefix + text(id)
+
+func collect_locals(stmts, out_map, out_list, exclude_map):
+    for s in stmts:
+        st: s["t"]
+        if st == "Assign":
+            nm: s["name"]
+            if not has(exclude_map, nm) and not has(out_map, nm):
+                set(out_map, nm, 1)
+                push(out_list, nm)
+        elif st == "FuncDef":
+            nm: s["name"]
+            if not has(exclude_map, nm) and not has(out_map, nm):
+                set(out_map, nm, 1)
+                push(out_list, nm)
+        elif st == "If":
+            collect_locals(s["body"], out_map, out_list, exclude_map)
+            collect_locals(s["orelse"], out_map, out_list, exclude_map)
+        elif st == "RepeatN":
+            collect_locals(s["body"], out_map, out_list, exclude_map)
+        elif st == "ForEach":
+            nm: s["var"]
+            if not has(exclude_map, nm) and not has(out_map, nm):
+                set(out_map, nm, 1)
+                push(out_list, nm)
+            collect_locals(s["body"], out_map, out_list, exclude_map)
+        elif st == "TryCatch":
+            collect_locals(s["try_body"], out_map, out_list, exclude_map)
+            if s["err_var"] != null:
+                nm: s["err_var"]
+                if not has(exclude_map, nm) and not has(out_map, nm):
+                    set(out_map, nm, 1)
+                    push(out_list, nm)
+            collect_locals(s["catch_body"], out_map, out_list, exclude_map)
+        elif st == "AgentDef":
+            nm: s["name"]
+            if not has(exclude_map, nm) and not has(out_map, nm):
+                set(out_map, nm, 1)
+                push(out_list, nm)
+        elif st == "Import":
+            nm: s["name"]
+            if not has(exclude_map, nm) and not has(out_map, nm):
+                set(out_map, nm, 1)
+                push(out_list, nm)
+        elif st == "Sandbox":
+            collect_locals(s["body"], out_map, out_list, exclude_map)
+
+func mark_line(proto, line):
+    if line > 0:
+        ls: proto["lines"]
+        n: len(ls)
+        if n == 0 or ls[n - 1][1] != line:
+            push(ls, [len(proto["code"]), line])
+
+func pop_to_loop(proto):
+    code: proto["code"]
+    top: proto["loops"][len(proto["loops"]) - 1]
+    nt: proto["trydepth"] - top["trydepth"]
+    rpt nt:
+        emit_u8(code, OP_TRY_POP)
+    ns: proto["sboxdepth"] - top["sboxdepth"]
+    rpt ns:
+        emit_u8(code, OP_SBOX_EXIT)
+
+func compile_proto(c, name, params, stmts, is_main):
+    pidx: len(c["protos"])
+    proto: {
+        "name": add_str_const(c, name),
+        "params": [],
+        "decl": [],
+        "decl_map": {},
+        "code": [],
+        "lines": [],
+        "loops": [],
+        "trydepth": 0,
+        "sboxdepth": 0
+    }
+    push(c["protos"], proto)
+
+    excl: {}
+    for pm in params:
+        push(proto["params"], add_str_const(c, pm))
+        set(excl, pm, 1)
+
+    if not is_main:
+        decl_names: []
+        collect_locals(stmts, proto["decl_map"], decl_names, excl)
+        for dn in decl_names:
+            push(proto["decl"], add_str_const(c, dn))
+
+    for s in stmts:
+        compile_stmt(c, proto, s, is_main)
+
+    if is_main:
+        emit_u8(proto["code"], OP_HALT)
+    else:
+        emit_u8(proto["code"], OP_NULL)
+        emit_u8(proto["code"], OP_RET)
+
+    return pidx
+
+func ensure_local(c, proto, name, is_main):
+    if not is_main and not has(proto["decl_map"], name):
+        set(proto["decl_map"], name, 1)
+        push(proto["decl"], add_str_const(c, name))
+
+func emit_jump(code, op):
+    emit_u8(code, op)
+    off: len(code)
+    emit_u32(code, 0)
+    return off
+
+func compile_stmt(c, proto, s, is_main):
+    code: proto["code"]
+    st: s["t"]
+    mark_line(proto, s["line"])
+
+    if st == "Assign":
+        compile_expr(c, proto, s["value"])
+        emit_u8(code, OP_STORE)
+        emit_u16(code, add_str_const(c, s["name"]))
+        return null
+
+    if st == "Print":
+        compile_expr(c, proto, s["expr"])
+        emit_u8(code, OP_PRINT)
+        return null
+
+    if st == "ExprStmt":
+        compile_expr(c, proto, s["expr"])
+        emit_u8(code, OP_POP)
+        return null
+
+    if st == "Return":
+        if s["value"] == null:
+            emit_u8(code, OP_NULL)
+        else:
+            compile_expr(c, proto, s["value"])
+        emit_u8(code, OP_RET)
+        return null
+
+    if st == "FuncDef":
+        sub_idx: compile_proto(c, s["name"], s["params"], s["body"], false)
+        emit_u8(code, OP_MAKE_FUNC)
+        emit_u16(code, sub_idx)
+        emit_u8(code, OP_STORE)
+        emit_u16(code, add_str_const(c, s["name"]))
+        return null
+
+    if st == "If":
+        compile_expr(c, proto, s["cond"])
+        j_false: emit_jump(code, OP_JMP_IF_FALSE)
+        for b in s["body"]:
+            compile_stmt(c, proto, b, is_main)
+        if len(s["orelse"]) > 0:
+            j_end: emit_jump(code, OP_JMP)
+            patch_u32(code, j_false, len(code))
+            for e in s["orelse"]:
+                compile_stmt(c, proto, e, is_main)
+            patch_u32(code, j_end, len(code))
+        else:
+            patch_u32(code, j_false, len(code))
+        return null
+
+    if st == "RepeatN":
+        lim_var: next_tmp(c, "__rlim_")
+        cnt_var: next_tmp(c, "__rcnt_")
+        ensure_local(c, proto, lim_var, is_main)
+        ensure_local(c, proto, cnt_var, is_main)
+        lim_ix: add_str_const(c, lim_var)
+        cnt_ix: add_str_const(c, cnt_var)
+
+        # lim = count; cnt = 0
+        compile_expr(c, proto, s["count"])
+        emit_u8(code, OP_CHECK_RPT)
+        emit_u8(code, OP_STORE)
+        emit_u16(code, lim_ix)
+        emit_u8(code, OP_CONST)
+        emit_u16(code, add_num_const(c, 0))
+        emit_u8(code, OP_STORE)
+        emit_u16(code, cnt_ix)
+
+        loop_start: len(code)
+        emit_u8(code, OP_LOAD)
+        emit_u16(code, cnt_ix)
+        emit_u8(code, OP_LOAD)
+        emit_u16(code, lim_ix)
+        emit_u8(code, OP_LT)
+        j_exit: emit_jump(code, OP_JMP_IF_FALSE)
+
+        loop_info: {"breaks": [], "conts": [], "trydepth": proto["trydepth"], "sboxdepth": proto["sboxdepth"]}
+        push(proto["loops"], loop_info)
+        for b in s["body"]:
+            compile_stmt(c, proto, b, is_main)
+        pop(proto["loops"])
+
+        cont_target: len(code)
+        for coff in loop_info["conts"]:
+            patch_u32(code, coff, cont_target)
+
+        # cnt = cnt + 1
+        emit_u8(code, OP_LOAD)
+        emit_u16(code, cnt_ix)
+        emit_u8(code, OP_CONST)
+        emit_u16(code, add_num_const(c, 1))
+        emit_u8(code, OP_ADD)
+        emit_u8(code, OP_STORE)
+        emit_u16(code, cnt_ix)
+
+        emit_u8(code, OP_JMP)
+        emit_u32(code, loop_start)
+
+        end_target: len(code)
+        patch_u32(code, j_exit, end_target)
+        for boff in loop_info["breaks"]:
+            patch_u32(code, boff, end_target)
+        return null
+
+    if st == "ForEach":
+        seq_var: next_tmp(c, "__fseq_")
+        idx_var: next_tmp(c, "__fidx_")
+        ensure_local(c, proto, seq_var, is_main)
+        ensure_local(c, proto, idx_var, is_main)
+        seq_ix: add_str_const(c, seq_var)
+        idx_ix: add_str_const(c, idx_var)
+        var_ix: add_str_const(c, s["var"])
+
+        # seq = iter; idx = 0
+        compile_expr(c, proto, s["iter"])
+        emit_u8(code, OP_CHECK_ITER)
+        emit_u8(code, OP_STORE)
+        emit_u16(code, seq_ix)
+        emit_u8(code, OP_CONST)
+        emit_u16(code, add_num_const(c, 0))
+        emit_u8(code, OP_STORE)
+        emit_u16(code, idx_ix)
+
+        loop_start: len(code)
+        emit_u8(code, OP_LOAD)
+        emit_u16(code, idx_ix)
+        emit_u8(code, OP_LOAD)
+        emit_u16(code, seq_ix)
+        emit_u8(code, OP_LEN)
+        emit_u8(code, OP_LT)
+        j_exit: emit_jump(code, OP_JMP_IF_FALSE)
+
+        # var = seq[idx]
+        emit_u8(code, OP_LOAD)
+        emit_u16(code, seq_ix)
+        emit_u8(code, OP_LOAD)
+        emit_u16(code, idx_ix)
+        emit_u8(code, OP_INDEX)
+        emit_u8(code, OP_STORE)
+        emit_u16(code, var_ix)
+
+        loop_info: {"breaks": [], "conts": [], "trydepth": proto["trydepth"], "sboxdepth": proto["sboxdepth"]}
+        push(proto["loops"], loop_info)
+        for b in s["body"]:
+            compile_stmt(c, proto, b, is_main)
+        pop(proto["loops"])
+
+        cont_target: len(code)
+        for coff in loop_info["conts"]:
+            patch_u32(code, coff, cont_target)
+
+        # idx = idx + 1
+        emit_u8(code, OP_LOAD)
+        emit_u16(code, idx_ix)
+        emit_u8(code, OP_CONST)
+        emit_u16(code, add_num_const(c, 1))
+        emit_u8(code, OP_ADD)
+        emit_u8(code, OP_STORE)
+        emit_u16(code, idx_ix)
+
+        emit_u8(code, OP_JMP)
+        emit_u32(code, loop_start)
+
+        end_target: len(code)
+        patch_u32(code, j_exit, end_target)
+        for boff in loop_info["breaks"]:
+            patch_u32(code, boff, end_target)
+        return null
+
+    if st == "Break":
+        if len(proto["loops"]) == 0:
+            fail("Compile error at line " + text(s["line"]) + ": 'break' outside loop")
+        pop_to_loop(proto)
+        top: proto["loops"][len(proto["loops"]) - 1]
+        push(top["breaks"], emit_jump(code, OP_JMP))
+        return null
+
+    if st == "Continue":
+        if len(proto["loops"]) == 0:
+            fail("Compile error at line " + text(s["line"]) + ": 'continue' outside loop")
+        pop_to_loop(proto)
+        top: proto["loops"][len(proto["loops"]) - 1]
+        push(top["conts"], emit_jump(code, OP_JMP))
+        return null
+
+    if st == "TryCatch":
+        j_try: emit_jump(code, OP_TRY_PUSH)
+        set(proto, "trydepth", proto["trydepth"] + 1)
+        for b in s["try_body"]:
+            compile_stmt(c, proto, b, is_main)
+        set(proto, "trydepth", proto["trydepth"] - 1)
+        emit_u8(code, OP_TRY_POP)
+        j_end: emit_jump(code, OP_JMP)
+        patch_u32(code, j_try, len(code))
+        if s["err_var"] != null:
+            emit_u8(code, OP_STORE)
+            emit_u16(code, add_str_const(c, s["err_var"]))
+        else:
+            emit_u8(code, OP_POP)
+        for b in s["catch_body"]:
+            compile_stmt(c, proto, b, is_main)
+        patch_u32(code, j_end, len(code))
+        return null
+
+    if st == "Import":
+        if s["name"] != "ai":
+            fail("Compile error at line " + text(s["line"]) + ": 'use " + s["name"] + "' is not supported in the VM (only 'use ai' is available)")
+        emit_u8(code, OP_AI_NEW)
+        emit_u8(code, OP_STORE)
+        emit_u16(code, add_str_const(c, s["name"]))
+        return null
+
+    if st == "AgentDef":
+        emit_u8(code, OP_CONST)
+        emit_u16(code, add_str_const(c, s["name"]))
+        if s["model"] != null:
+            compile_expr(c, proto, s["model"])
+        else:
+            emit_u8(code, OP_NULL)
+        if s["system"] != null:
+            compile_expr(c, proto, s["system"])
+        else:
+            emit_u8(code, OP_NULL)
+        emit_u8(code, OP_AGENT)
+        emit_u8(code, OP_STORE)
+        emit_u16(code, add_str_const(c, s["name"]))
+        return null
+
+    if st == "Sandbox":
+        mask: 0
+        has_net: false
+        has_fs: false
+        for d in s["denies"]:
+            if d == "net" and not has_net:
+                mask: mask + 1
+                has_net: true
+            elif d == "fs" and not has_fs:
+                mask: mask + 2
+                has_fs: true
+        emit_u8(code, OP_SBOX_ENTER)
+        emit_u8(code, mask)
+        set(proto, "sboxdepth", proto["sboxdepth"] + 1)
+        for b in s["body"]:
+            compile_stmt(c, proto, b, is_main)
+        set(proto, "sboxdepth", proto["sboxdepth"] - 1)
+        emit_u8(code, OP_SBOX_EXIT)
+        return null
+
+func compile_expr(c, proto, e):
+    code: proto["code"]
+    et: e["t"]
+
+    if et == "Num":
+        emit_u8(code, OP_CONST)
+        emit_u16(code, add_num_const(c, e["v"]))
+        return null
+    if et == "Str":
+        emit_u8(code, OP_CONST)
+        emit_u16(code, add_str_const(c, e["v"]))
+        return null
+    if et == "Bool":
+        if e["v"]:
+            emit_u8(code, OP_TRUE)
+        else:
+            emit_u8(code, OP_FALSE)
+        return null
+    if et == "Null":
+        emit_u8(code, OP_NULL)
+        return null
+    if et == "Var":
+        emit_u8(code, OP_LOAD)
+        emit_u16(code, add_str_const(c, e["name"]))
+        return null
+    if et == "UnaryOp":
+        compile_expr(c, proto, e["operand"])
+        if e["op"] == "-":
+            emit_u8(code, OP_NEG)
+        else:
+            emit_u8(code, OP_NOT)
+        return null
+    if et == "BinOp":
+        op: e["op"]
+        if op == "and":
+            compile_expr(c, proto, e["l"])
+            j_short: emit_jump(code, OP_JIF_PEEK)
+            emit_u8(code, OP_POP)
+            compile_expr(c, proto, e["r"])
+            patch_u32(code, j_short, len(code))
+            return null
+        if op == "or":
+            compile_expr(c, proto, e["l"])
+            j_short: emit_jump(code, OP_JIT_PEEK)
+            emit_u8(code, OP_POP)
+            compile_expr(c, proto, e["r"])
+            patch_u32(code, j_short, len(code))
+            return null
+        compile_expr(c, proto, e["l"])
+        compile_expr(c, proto, e["r"])
+        if op == "+":
+            emit_u8(code, OP_ADD)
+        elif op == "-":
+            emit_u8(code, OP_SUB)
+        elif op == "*":
+            emit_u8(code, OP_MUL)
+        elif op == "/":
+            emit_u8(code, OP_DIV)
+        elif op == "%":
+            emit_u8(code, OP_MOD)
+        elif op == "==":
+            emit_u8(code, OP_EQ)
+        elif op == "!=":
+            emit_u8(code, OP_NE)
+        elif op == "<":
+            emit_u8(code, OP_LT)
+        elif op == "<=":
+            emit_u8(code, OP_LE)
+        elif op == ">":
+            emit_u8(code, OP_GT)
+        elif op == ">=":
+            emit_u8(code, OP_GE)
+        return null
+    if et == "ListLit":
+        for it in e["items"]:
+            compile_expr(c, proto, it)
+        emit_u8(code, OP_LIST)
+        emit_u16(code, len(e["items"]))
+        return null
+    if et == "DictLit":
+        for pair in e["pairs"]:
+            compile_expr(c, proto, pair[0])
+            compile_expr(c, proto, pair[1])
+        emit_u8(code, OP_DICT)
+        emit_u16(code, len(e["pairs"]))
+        return null
+    if et == "Index":
+        compile_expr(c, proto, e["obj"])
+        compile_expr(c, proto, e["idx"])
+        emit_u8(code, OP_INDEX)
+        return null
+    if et == "Member":
+        compile_expr(c, proto, e["obj"])
+        emit_u8(code, OP_GET_MEMBER)
+        emit_u16(code, add_str_const(c, e["name"]))
+        return null
+    if et == "Call":
+        compile_expr(c, proto, e["callee"])
+        for a in e["args"]:
+            compile_expr(c, proto, a)
+        emit_u8(code, OP_CALL)
+        emit_u8(code, len(e["args"]))
+        return null
+    if et == "GoTask":
+        call: e["call"]
+        compile_expr(c, proto, call["callee"])
+        for a in call["args"]:
+            compile_expr(c, proto, a)
+        emit_u8(code, OP_GO)
+        emit_u8(code, len(call["args"]))
+        return null
+    if et == "Input":
+        compile_expr(c, proto, e["prompt"])
+        emit_u8(code, OP_ASK)
+        return null
+
+func serialize(c):
+    out: []
+    # Magic "VXC1" + version 3
+    for b in utf8bytes("VXC1"):
+        push(out, b)
+    emit_u8(out, 3)
+
+    # Constants
+    emit_u32(out, len(c["consts"]))
+    for k in c["consts"]:
+        if k[0] == 1:
+            emit_u8(out, 1)
+            for b in f64bytes(k[1]):
+                push(out, b)
+        else:
+            emit_u8(out, 2)
+            sb: utf8bytes(k[1])
+            emit_u32(out, len(sb))
+            for b in sb:
+                push(out, b)
+
+    # Protos
+    emit_u32(out, len(c["protos"]))
+    for pr in c["protos"]:
+        emit_u32(out, pr["name"])
+        np: len(pr["params"])
+        emit_u8(out, np)
+        for pm in pr["params"]:
+            emit_u32(out, pm)
+        # nslots = np, slot_names = params
+        emit_u16(out, np)
+        for pm in pr["params"]:
+            emit_u32(out, pm)
+        # nescp = np, escp = [0..np-1]
+        emit_u8(out, np)
+        ei: 0
+        rpt np:
+            emit_u8(out, ei)
+            ei: ei + 1
+        # decl
+        emit_u16(out, len(pr["decl"]))
+        for d in pr["decl"]:
+            emit_u32(out, d)
+        # code
+        emit_u32(out, len(pr["code"]))
+        for b in pr["code"]:
+            push(out, b)
+        # lines
+        emit_u32(out, len(pr["lines"]))
+        for lr in pr["lines"]:
+            emit_u32(out, lr[0])
+            emit_u32(out, lr[1])
+
+    return out
+
+# ---- Main entry point ----
+cli: args()
+if len(cli) < 2:
+    print "usage: vxvm --allow-fs vxc.vxc <input.vx> <output.vxc>"
+else:
+    src: readfile(cli[0])
+    toks: lex(src)
+    ast: parse_program(toks)
+    comp: make_compiler()
+    compile_proto(comp, "<main>", [], ast, true)
+    raw: serialize(comp)
+    writebytes(cli[1], raw)

@@ -26,6 +26,8 @@ size_t   max_mem = 0,  mem_used = 0;
 double   max_secs = 0; clock_t start_clock;
 int      allow_net = 0;   /* network (get/ai.ask) denied unless --allow-net */
 int      allow_fs  = 0;   /* file access (readfile/writefile) denied unless --allow-fs */
+int      vx_argc   = 0;   /* program arguments passed after <program.vxc> */
+char   **vx_argv   = NULL;
 
 /* ---- GC (blueprint Bab 5): mark-sweep at safepoints ---- */
 size_t   next_gc = 1u << 20;   /* first collection at 1 MB */
@@ -440,12 +442,16 @@ int main(int argc, char **argv) {
             gc_stress = 1;  
         else if (strcmp(argv[i], "--gc-stats") == 0)
             gc_stats = 1;
-        else if (argv[i][0] != '-')
+        else if (argv[i][0] != '-') {
             path = argv[i];
+            vx_argc = argc - (i + 1);
+            vx_argv = (vx_argc > 0) ? &argv[i + 1] : NULL;
+            break;
+        }
         else {
             fprintf(stderr, "usage: vxvm [--max-instr N] [--max-mem BYTES]"
                     " [--max-time SECS] [--allow-net] [--allow-fs]"
-                    " <program.vxc>\n");
+                    " <program.vxc> [args...]\n");
             return 1;
         }
     }

@@ -219,6 +219,8 @@ extern size_t   max_mem,  mem_used;
 extern double   max_secs; extern clock_t start_clock;
 extern int      allow_net;  /* network (get/ai.ask) denied unless --allow-net */
 extern int      allow_fs;   /* files (readfile/writefile) denied unless --allow-fs */
+extern int      vx_argc;    /* program arguments passed after <program.vxc> */
+extern char   **vx_argv;
 
 /* GC state (blueprint Bab 5) */
 extern size_t   next_gc, peak_mem;
