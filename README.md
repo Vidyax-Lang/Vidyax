@@ -230,6 +230,18 @@ Vidyax ships with an official **Visual Studio Code extension** that provides syn
 
 You can also install it directly from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=nadev.vidyax).
 
+## Self-Hosting Bootstrap (`vxc.vx`)
+
+Vidyax can compile itself to `VXC1 v3` bytecode on the native C VM (`vm/vxvm`) with a verified 3-stage fixed point (79/79 core suite parity):
+
+```bash
+make -C vm
+python3 vxc.py vxc.vx -o /tmp/vxc_s0.vxc
+./vm/vxvm --allow-fs /tmp/vxc_s0.vxc vxc.vx /tmp/vxc_s1.vxc
+./vm/vxvm --allow-fs /tmp/vxc_s1.vxc vxc.vx /tmp/vxc_s2.vxc
+cmp /tmp/vxc_s1.vxc /tmp/vxc_s2.vxc && echo "Fixed-point bootstrap verified"
+```
+
 ## Contributing
 
 Contributions, bug reports, and feature requests are welcome. Feel free to open an [issue](https://github.com/Vidyax-Lang/Vidyax/issues) or submit a pull request. Every new language feature is expected to be verified against the shared test suite before merging.
