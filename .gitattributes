@@ -1,2 +1,2 @@
-*.py linguist-detectable=false
+*.py linguist-vendored
 vidyax.js linguist-generated=true
