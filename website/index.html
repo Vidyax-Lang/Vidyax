@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("vidyax-color-scheme");
+        if (saved === "light" || saved === "dark") {
+          document.querySelector('meta[name="color-scheme"]').content = saved;
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <title>Vidyax — Experimental Capability-Sandboxed Programming Language</title>
+  <meta
+    name="description"
+    content="Vidyax is an experimental capability-sandboxed programming language with a self-hosting bytecode compiler and C virtual machine."
+  />
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: light-dark(#f4f6f4, #0c110e);
+      --surface: light-dark(#ffffff, #131b16);
+      --surface-alt: light-dark(#e9eee9, #19241d);
+      --text: light-dark(#0f2417, #e7efe9);
+      --muted: light-dark(#43594b, #9cb0a3);
+      --border: light-dark(#d2dcd4, #25362b);
+      --accent: light-dark(#1b6b43, #5bd694);
+      --accent-fg: light-dark(#ffffff, #081c11);
+      --warn-bg: light-dark(#fff7e6, #28200f);
+      --warn-border: light-dark(#e6c47a, #695220);
+      --warn-text: light-dark(#6b4a07, #f0cf85);
+      --mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    :root:has(> head > meta[name="color-scheme"][content="dark"]) {
+      color-scheme: dark;
+    }
+
+    :root:has(> head > meta[name="color-scheme"][content="light"]) {
+      color-scheme: light;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    header {
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 58px;
+      gap: 16px;
+    }
+
+    .brand {
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tag {
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: var(--warn-text);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      font-size: 14px;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+    }
+
+    .nav-links a:hover {
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .theme-btn {
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .hero {
+      padding: 56px 0 36px;
+    }
+
+    .notice {
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: var(--warn-text);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      font-size: clamp(2rem, 4.5vw, 2.85rem);
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+    }
+
+    .lead {
+      font-size: 17px;
+      color: var(--muted);
+      max-width: 68ch;
+      margin: 0 0 28px;
+    }
+
+    .install-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .install-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-alt);
+      overflow-x: auto;
+    }
+
+    .install-tabs button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12.5px;
+      padding: 10px 16px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+
+    .install-tabs button[aria-selected="true"] {
+      color: var(--text);
+      border-bottom-color: var(--accent);
+      background: var(--surface);
+      font-weight: 600;
+    }
+
+    .install-body {
+      padding: 18px;
+    }
+
+    .cmd-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-family: var(--mono);
+      font-size: 13px;
+      overflow-x: auto;
+    }
+
+    .cmd-row code {
+      white-space: nowrap;
+    }
+
+    .copy-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .copy-btn {
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--accent);
+      color: var(--accent-fg);
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .copy-status {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--accent);
+      min-width: 52px;
+    }
+
+    .dl-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+      font-size: 13px;
+    }
+
+    .dl-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12.5px;
+    }
+
+    .dl-btn:hover {
+      border-color: var(--accent);
+      text-decoration: none;
+    }
+
+    section {
+      padding: 36px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 21px;
+      letter-spacing: -0.02em;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 18px;
+      margin-top: 16px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+
+    .card p {
+      margin: 0;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    pre {
+      margin: 12px 0 0;
+      padding: 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.55;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      font-size: 13.5px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      background: var(--surface-alt);
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    td code {
+      font-family: var(--mono);
+      font-size: 12.5px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    .notes {
+      margin-top: 14px;
+      font-size: 13.5px;
+      color: var(--muted);
+    }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 28px 0 42px;
+      font-size: 13px;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap nav">
+      <div class="brand">
+        <span>Vidyax</span>
+        <span class="tag">experimental</span>
+      </div>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#install">Install</a>
+        <a href="#benchmarks">Benchmarks</a>
+        <a href="#examples">Examples</a>
+        <a href="https://vidyax-lang.github.io/Vidyax/">Docs</a>
+        <a href="https://github.com/Vidyax-Lang/Vidyax">GitHub</a>
+        <button type="button" class="theme-btn" id="theme-toggle">Theme</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero" id="install" style="border-top: 0;">
+      <div class="notice">
+        <strong>Experimental / Not Yet Stable:</strong> Vidyax is under active development and not recommended for production workloads. Syntax, bytecode format, and runtime internals may change.
+      </div>
+
+      <h1>Capability-sandboxed bytecode language with a self-hosting C VM.</h1>
+      <p class="lead">
+        Run untrusted or AI-generated scripts in-process with deny-by-default network and filesystem capabilities, hard instruction and memory caps, and a self-hosted compiler embedded directly inside the standalone CLI.
+      </p>
+
+      <div class="install-card">
+        <div class="install-tabs" role="tablist" aria-label="Install method">
+          <button type="button" role="tab" id="tab-unix" aria-selected="true" data-tab="unix">Linux / macOS</button>
+          <button type="button" role="tab" id="tab-windows" aria-selected="false" data-tab="windows">Windows (PowerShell)</button>
+          <button type="button" role="tab" id="tab-source" aria-selected="false" data-tab="source">Build from Source</button>
+        </div>
+        <div class="install-body">
+          <div class="cmd-row">
+            <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/Vidyax-Lang/Vidyax/main/install.sh | sh</code>
+            <span class="copy-wrap">
+              <button type="button" class="copy-btn" id="copy-btn">Copy</button>
+              <span class="copy-status" role="status" id="copy-status"></span>
+            </span>
+          </div>
+
+          <div class="dl-links">
+            <a class="dl-btn" href="https://github.com/Vidyax-Lang/Vidyax/releases/latest">Direct Binary Downloads (GitHub Releases)</a>
+            <a class="dl-btn" href="https://vidyax-lang.github.io/Vidyax/playground/">Browser WASM Playground</a>
+            <a class="dl-btn" href="https://marketplace.visualstudio.com/items?itemName=nadev.vidyax">VS Code Extension</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="benchmarks">
+      <h2>Technical Benchmark Report (Head-to-Head)</h2>
+      <p class="notes" style="margin-top: 0;">
+        Measured on Linux x86_64 via <code>python3 benchmarks/head_to_head.py</code> using a minimal C <code>wait4()</code> + <code>CLOCK_MONOTONIC</code> harness (median of 5 runs). Workload: recursive <code>Hanoi(18)</code> (262,143 calls) + 50,000 skyline block placements, asserting identical output <code>262143 1666691668</code>.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Runtime</th>
+              <th>Cold-Start</th>
+              <th>Compute</th>
+              <th>Peak RAM (Max RSS)</th>
+              <th>Binary Size</th>
+              <th>Built-in Sandbox</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Vidyax AOT Native</strong></td>
+              <td><code>2.48 ms</code></td>
+              <td><code>39.97 ms</code></td>
+              <td><code>2.35 MB</code></td>
+              <td><code>93 KB</code></td>
+              <td>Built-in (deny net, fs)</td>
+            </tr>
+            <tr>
+              <td><strong>Vidyax C VM (vxvm .vxc)</strong></td>
+              <td><code>2.83 ms</code></td>
+              <td><code>175.56 ms</code></td>
+              <td><code>3.41 MB</code></td>
+              <td><code>104 KB</code></td>
+              <td>Built-in (deny net, fs)</td>
+            </tr>
+            <tr>
+              <td><strong>Vidyax Standalone CLI (.vx)</strong></td>
+              <td><code>5.55 ms</code></td>
+              <td><code>186.78 ms</code></td>
+              <td><code>3.50 MB</code></td>
+              <td><code>144 KB</code></td>
+              <td>Built-in + self-hosted</td>
+            </tr>
+            <tr>
+              <td>Lua</td>
+              <td><code>3.09 ms</code></td>
+              <td><code>27.96 ms</code></td>
+              <td><code>2.57 MB</code></td>
+              <td><code>322 KB</code></td>
+              <td>Manual env strip</td>
+            </tr>
+            <tr>
+              <td>Rust (rustc -O)</td>
+              <td><code>3.02 ms</code></td>
+              <td><code>5.30 ms</code></td>
+              <td><code>2.15 MB</code></td>
+              <td><code>4.3 MB</code></td>
+              <td>None (OS-level)</td>
+            </tr>
+            <tr>
+              <td>Python 3 (CPython)</td>
+              <td><code>38.97 ms</code></td>
+              <td><code>74.05 ms</code></td>
+              <td><code>10.86 MB</code></td>
+              <td><code>14 KB + libpython</code></td>
+              <td>None</td>
+            </tr>
+            <tr>
+              <td>Node.js (V8 JIT)</td>
+              <td><code>56.77 ms</code></td>
+              <td><code>68.11 ms</code></td>
+              <td><code>72.05 MB</code></td>
+              <td><code>119.1 MB</code></td>
+              <td>Experimental flag</td>
+            </tr>
+            <tr>
+              <td>C (gcc -O2)</td>
+              <td><code>2.25 ms</code></td>
+              <td><code>2.85 ms</code></td>
+              <td><code>1.62 MB</code></td>
+              <td><code>16 KB</code></td>
+              <td>None (raw OS)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="notes">
+        <strong>Honest trade-offs:</strong> C and Rust remain much faster in raw compute because they use unboxed machine integers with no GC safepoint checks; Lua's register VM outperforms Vidyax's current stack-based VM. Vidyax trades raw loop throughput for dynamic tagged values, built-in capability sandboxing, and ~2.5 ms cold-start without containers.
+      </p>
+    </section>
+
+    <section id="examples">
+      <h2>Language &amp; Sandbox Examples</h2>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Lexical Capability Sandbox</h3>
+          <p>Permissions can only be reduced, never escalated, and are inherited by tasks spawned via <code>go</code>.</p>
+          <pre><code>sandbox deny net, fs:
+    clean: trim(lower("REPORT.TXT"))
+    print clean
+    # writefile(...) raises a catchable error here</code></pre>
+        </div>
+
+        <div class="card">
+          <h3>Concurrent I/O &amp; Verification</h3>
+          <p>Run network/AI calls concurrently with data-race-free GIL scheduling and verify self-hosting via <code>./bootstrap.sh</code>.</p>
+          <pre><code>use ai
+
+a: go ai.ask("Explain gravity in one sentence")
+b: go ai.ask("Explain osmosis in one sentence")
+print wait(a)
+print wait(b)</code></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <span>Vidyax · Apache-2.0 License · Tokenectomy Labs</span>
+    <span>
+      <a href="https://github.com/Vidyax-Lang/Vidyax">Source</a> ·
+      <a href="https://vidyax-lang.github.io/Vidyax/">Documentation</a> ·
+      <a href="https://kronumos.com/">Kronumos</a>
+    </span>
+  </footer>
+
+  <script>
+    (function () {
+      var commands = {
+        unix: "curl -fsSL https://raw.githubusercontent.com/Vidyax-Lang/Vidyax/main/install.sh | sh",
+        windows: "irm https://raw.githubusercontent.com/Vidyax-Lang/Vidyax/main/install.ps1 | iex",
+        source: "git clone https://github.com/Vidyax-Lang/Vidyax.git && cd Vidyax && make -C vm vxvm vidyax"
+      };
+
+      var cmdEl = document.getElementById("install-cmd");
+      var tabs = document.querySelectorAll(".install-tabs button");
+      var copyBtn = document.getElementById("copy-btn");
+      var copyStatus = document.getElementById("copy-status");
+      var copyCount = 0;
+
+      function selectTab(key) {
+        tabs.forEach(function (btn) {
+          btn.setAttribute("aria-selected", String(btn.dataset.tab === key));
+        });
+        cmdEl.textContent = commands[key];
+      }
+
+      tabs.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          selectTab(btn.dataset.tab);
+        });
+      });
+
+      if (navigator.userAgent && navigator.userAgent.indexOf("Windows") !== -1) {
+        selectTab("windows");
+      }
+
+      copyBtn.addEventListener("click", function () {
+        if (!navigator.clipboard) return;
+        navigator.clipboard.writeText(cmdEl.textContent || "").then(function () {
+          copyCount += 1;
+          copyStatus.textContent = copyCount % 2 === 0 ? "Copied\u00A0" : "Copied";
+          setTimeout(function () {
+            copyStatus.textContent = "";
+          }, 1800);
+        });
+      });
+
+      var themeBtn = document.getElementById("theme-toggle");
+      var meta = document.querySelector('meta[name="color-scheme"]');
+      themeBtn.addEventListener("click", function () {
+        var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var current = meta.content === "dark" ? "dark" : meta.content === "light" ? "light" : (prefersDark ? "dark" : "light");
+        var target = current === "dark" ? "light" : "dark";
+        var matchesSystem = (target === "dark") === prefersDark;
+        try {
+          if (matchesSystem) {
+            localStorage.removeItem("vidyax-color-scheme");
+          } else {
+            localStorage.setItem("vidyax-color-scheme", target);
+          }
+        } catch (e) {}
+        meta.content = matchesSystem ? "light dark" : target;
+      });
+    })();
+  </script>
+</body>
+</html>
