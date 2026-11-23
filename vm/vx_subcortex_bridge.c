@@ -1,6 +1,6 @@
 #define _GNU_SOURCE
 #include "vx_subcortex_bridge.h"
-#include "../../../tools/tokenectomy-oss/include/tokenectomy_subcortex.h"
+#include "tokenectomy_subcortex.h"
 
 #include <errno.h>
 #include <fcntl.h>
