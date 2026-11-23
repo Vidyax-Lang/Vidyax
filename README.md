@@ -2,7 +2,7 @@
 
 # Vidyax
 
-**A capability-sandboxed, self-hosting programming language with a `141 KB` zero-Python standalone C runtime.**
+**An experimental, capability-sandboxed programming language with a self-hosting bytecode compiler and C virtual machine.**
 
 [![VS Code Rating](https://img.shields.io/visual-studio-marketplace/stars/nadev.vidyax?color=gold)](https://marketplace.visualstudio.com/items?itemName=nadev.vidyax)
 [![GitHub Stars](https://img.shields.io/github/stars/Vidyax-Lang/Vidyax?style=social)](https://github.com/Vidyax-Lang/Vidyax/stargazers)
@@ -14,16 +14,18 @@
 
 ---
 
-Vidyax is a small, statically verified bytecode language designed for running untrusted or AI-generated programs without spinning up containers or heavy language runtimes.
+> **Status: Experimental (Not Yet Stable).** Vidyax is under active development and is not recommended for production use. Language syntax, bytecode encoding, standard library APIs, and runtime internals are subject to breaking changes.
+
+Vidyax is a small, statically verified bytecode language designed for running untrusted or AI-generated scripts in-process without spinning up containers or heavy runtimes.
 
 - **Deny-by-default capability sandbox:** Network and filesystem access are disabled by default and can be further restricted per lexical scope (`sandbox deny net, fs:`), inherited across spawned concurrent tasks (`go` / `wait`).
-- **Zero-Python standalone binary (`141 KB`):** `make -C vm vidyax` embeds the 3-stage self-hosted compiler (`vxc.vxc`, `34,274 bytes`) directly into the C VM (`vxvm`). Running `./vidyax program.vx` compiles and executes with zero Python dependency.
-- **Lazy `libcurl` loading:** `libcurl.so.4` is loaded via `dlopen` only on the first HTTP or `ai.ask()` call, keeping offline startup at **`2.5–2.8 ms`** and peak RSS at **`2.3–3.5 MB`**.
-- **Four parity-verified engines:** Tree-walker, Python transpiler, C bytecode VM (`vxvm`), and AOT native C compiler (`vidyax native`), verified against `135/135` VM tests and `300/300` differential fuzzer runs.
+- **Self-hosted standalone CLI (`./vidyax`):** `make -C vm vidyax` embeds the 3-stage self-hosted compiler (`vxc.vxc`) into the C VM (`vxvm`), allowing `./vidyax program.vx` to compile and execute without requiring Python at runtime.
+- **Lazy `libcurl` loading:** `libcurl.so.4` is loaded via `dlopen` only on the first HTTP or `ai.ask()` call, keeping offline startup low (`2.5–2.8 ms`) and peak RSS around `2.3–3.5 MB`.
+- **Four parity-verified engines:** Tree-walker, Python transpiler, C bytecode VM (`vxvm`), and AOT native C backend (`vidyax native`), verified against `135/135` VM tests and `300/300` differential fuzzer runs.
 
 ---
 
-## Quick Start (Zero Python)
+## Quick Start
 
 Requires a C99 compiler (`gcc` / `cc`) and `make`.
 
