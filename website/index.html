@@ -435,76 +435,76 @@
             <tr>
               <th>Runtime</th>
               <th>Cold-Start</th>
-              <th>Compute</th>
-              <th>Peak RAM (Max RSS)</th>
-              <th>Binary Size</th>
-              <th>Built-in Sandbox</th>
+              <th>Hanoi18 + 50k</th>
+              <th>Primes (25k)</th>
+              <th>Policy Scrub (5k)</th>
+              <th>Peak RAM</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td><strong>Vidyax AOT Native</strong></td>
-              <td><code>2.48 ms</code></td>
-              <td><code>39.97 ms</code></td>
-              <td><code>2.35 MB</code></td>
-              <td><code>93 KB</code></td>
-              <td>Built-in (deny net, fs)</td>
+              <td><code>2.35 ms</code></td>
+              <td><code>41.24 ms</code></td>
+              <td><code>72.88 ms</code></td>
+              <td><code>16.04 ms</code></td>
+              <td><code>3.80 MB</code></td>
             </tr>
             <tr>
               <td><strong>Vidyax C VM (vxvm .vxc)</strong></td>
-              <td><code>2.83 ms</code></td>
-              <td><code>175.56 ms</code></td>
-              <td><code>3.41 MB</code></td>
-              <td><code>104 KB</code></td>
-              <td>Built-in (deny net, fs)</td>
+              <td><code>2.87 ms</code></td>
+              <td><code>177.30 ms</code></td>
+              <td><code>97.20 ms</code></td>
+              <td><code>22.98 ms</code></td>
+              <td><code>3.64 MB</code></td>
             </tr>
             <tr>
               <td><strong>Vidyax Standalone CLI (.vx)</strong></td>
-              <td><code>5.55 ms</code></td>
-              <td><code>186.78 ms</code></td>
-              <td><code>3.50 MB</code></td>
-              <td><code>144 KB</code></td>
-              <td>Built-in + self-hosted</td>
+              <td><code>5.89 ms</code></td>
+              <td><code>196.29 ms</code></td>
+              <td><code>113.25 ms</code></td>
+              <td><code>22.93 ms</code></td>
+              <td><code>3.61 MB</code></td>
             </tr>
             <tr>
               <td>Lua</td>
-              <td><code>3.09 ms</code></td>
-              <td><code>27.96 ms</code></td>
-              <td><code>2.57 MB</code></td>
-              <td><code>322 KB</code></td>
-              <td>Manual env strip</td>
+              <td><code>3.24 ms</code></td>
+              <td><code>28.08 ms</code></td>
+              <td><code>13.30 ms</code></td>
+              <td><code>21.63 ms</code></td>
+              <td><code>2.59 MB</code></td>
             </tr>
             <tr>
               <td>Rust (rustc -O)</td>
-              <td><code>3.02 ms</code></td>
-              <td><code>5.30 ms</code></td>
-              <td><code>2.15 MB</code></td>
-              <td><code>4.3 MB</code></td>
-              <td>None (OS-level)</td>
+              <td><code>2.86 ms</code></td>
+              <td><code>4.67 ms</code></td>
+              <td><code>4.52 ms</code></td>
+              <td><code>4.61 ms</code></td>
+              <td><code>2.23 MB</code></td>
             </tr>
             <tr>
               <td>Python 3 (CPython)</td>
-              <td><code>38.97 ms</code></td>
-              <td><code>74.05 ms</code></td>
-              <td><code>10.86 MB</code></td>
-              <td><code>14 KB + libpython</code></td>
-              <td>None</td>
+              <td><code>46.20 ms</code></td>
+              <td><code>82.08 ms</code></td>
+              <td><code>67.78 ms</code></td>
+              <td><code>39.25 ms</code></td>
+              <td><code>10.71 MB</code></td>
             </tr>
             <tr>
               <td>Node.js (V8 JIT)</td>
-              <td><code>56.77 ms</code></td>
-              <td><code>68.11 ms</code></td>
-              <td><code>72.05 MB</code></td>
-              <td><code>119.1 MB</code></td>
-              <td>Experimental flag</td>
+              <td><code>59.68 ms</code></td>
+              <td><code>70.83 ms</code></td>
+              <td><code>71.07 ms</code></td>
+              <td><code>66.53 ms</code></td>
+              <td><code>72.91 MB</code></td>
             </tr>
             <tr>
               <td>C (gcc -O2)</td>
-              <td><code>2.25 ms</code></td>
-              <td><code>2.85 ms</code></td>
-              <td><code>1.62 MB</code></td>
-              <td><code>16 KB</code></td>
-              <td>None (raw OS)</td>
+              <td><code>2.18 ms</code></td>
+              <td><code>2.68 ms</code></td>
+              <td><code>4.19 ms</code></td>
+              <td><code>2.21 ms</code></td>
+              <td><code>1.69 MB</code></td>
             </tr>
           </tbody>
         </table>

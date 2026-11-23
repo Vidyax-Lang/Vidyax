@@ -50,28 +50,30 @@ Capabilities are denied by default; opt in explicitly when needed:
 
 ## Technical Benchmark Report (Head-to-Head)
 
-Measured on Linux x86_64 using [benchmarks/head_to_head.py](benchmarks/head_to_head.py) with a minimal C `wait4()` + `CLOCK_MONOTONIC` harness (median of 5 runs; per-process `ru_maxrss` measured directly without parent-process RSS inflation).
+Measured on Linux x86_64 using [benchmarks/head_to_head.py](benchmarks/head_to_head.py) with a minimal C `wait4()` + `CLOCK_MONOTONIC` harness (median of 5 runs; per-process `ru_maxrss` measured directly without parent-process RSS inflation; identical stdout output asserted on every workload).
 
-- **Cold-start:** Boot runtime, print `"ok"`, exit.
-- **Compute:** Identical algorithm across every runtime — recursive `Hanoi(18)` (`262,143` calls) + `50,000` skyline block-placement iterations ([benchmarks/head_to_head.vx](benchmarks/head_to_head.vx)), asserting exact output `262143 1666691668`.
+- **Cold-Start:** Boot runtime, print `"ok"`, exit.
+- **Hanoi(18) + 50k:** Recursive `Hanoi(18)` (`262,143` calls) + `50,000` skyline block placements (`262143 1666691668`).
+- **Primes (25k):** Trial-division prime counting up to `25,000` (`2762`).
+- **Policy Scrub (5k):** `5,000` iterations of string trim + secret-token (`sk-`) redaction (`5000`).
 
-| Runtime | Cold-Start | Compute (`Hanoi(18) + 50k`) | Peak RAM (`Max RSS`) | Binary Size | Built-in Sandbox |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **Vidyax AOT Native** | `2.48 ms` | `39.97 ms` | `2.35 MB` (`2,408 KB`) | `93 KB` | Built-in (`deny net, fs`) |
-| **Vidyax C VM (`vxvm .vxc`)** | `2.83 ms` | `175.56 ms` | `3.41 MB` (`3,488 KB`) | `104 KB` | Built-in (`deny net, fs`) |
-| **Vidyax Zero-Python CLI (`.vx`)** | `5.55 ms` | `186.78 ms` | `3.50 MB` (`3,580 KB`) | `144 KB` | Built-in + self-hosted |
-| **Lua** | `3.09 ms` | `27.96 ms` | `2.57 MB` (`2,628 KB`) | `322 KB` | Manual env strip |
-| **Rust (`rustc -O`)** | `3.02 ms` | `5.30 ms` | `2.15 MB` (`2,200 KB`) | `4.3 MB` | None (OS-level) |
-| **Python 3 (CPython)** | `38.97 ms` | `74.05 ms` | `10.86 MB` (`11,120 KB`) | `14 KB + libpython` | None |
-| **Node.js (V8 JIT)** | `56.77 ms` | `68.11 ms` | `72.05 MB` (`73,780 KB`) | `119.1 MB` | Experimental flag |
-| **C (`gcc -O2`)** | `2.25 ms` | `2.85 ms` | `1.62 MB` (`1,664 KB`) | `16 KB` | None (raw OS) |
+| Runtime | Cold-Start | Hanoi18 + 50k | Primes (25k) | Policy Scrub (5k) | Peak RAM (`Max RSS`) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Vidyax AOT Native** | `2.35 ms` | `41.24 ms` | `72.88 ms` | `16.04 ms` | `3.80 MB` |
+| **Vidyax C VM (`vxvm .vxc`)** | `2.87 ms` | `177.30 ms` | `97.20 ms` | `22.98 ms` | `3.64 MB` |
+| **Vidyax Standalone CLI (`.vx`)** | `5.89 ms` | `196.29 ms` | `113.25 ms` | `22.93 ms` | `3.61 MB` |
+| **Lua** | `3.24 ms` | `28.08 ms` | `13.30 ms` | `21.63 ms` | `2.59 MB` |
+| **Rust (`rustc -O`)** | `2.86 ms` | `4.67 ms` | `4.52 ms` | `4.61 ms` | `2.23 MB` |
+| **Python 3 (CPython)** | `46.20 ms` | `82.08 ms` | `67.78 ms` | `39.25 ms` | `10.71 MB` |
+| **Node.js (V8 JIT)** | `59.68 ms` | `70.83 ms` | `71.07 ms` | `66.53 ms` | `72.91 MB` |
+| **C (`gcc -O2`)** | `2.18 ms` | `2.68 ms` | `4.19 ms` | `2.21 ms` | `1.69 MB` |
 
 ### Honest Trade-offs & Limitations
 
-1. **Where Vidyax wins:** Cold-start (`2.48–2.83 ms`), binary size (`93–144 KB`), and peak RSS (`2.35–3.50 MB`) are an order of magnitude smaller/faster than CPython (`38.97 ms`, `10.86 MB`) and Node.js V8 (`56.77 ms`, `72.05 MB`), while enforcing capability sandboxing (`--max-instr`, `--max-mem`, `--max-time`, `sandbox deny net, fs:`) in-process without containers. End-to-end, `Vidyax AOT Native` (`39.97 ms`) outperforms both CPython (`74.05 ms`) and Node.js (`68.11 ms`) on short-lived compute workloads.
+1. **Where Vidyax wins:** On short-lived sandboxed scripts and string/policy pipelines (`Policy Scrub 5k`), `Vidyax AOT Native` (`16.04 ms`) beats **Lua (`21.63 ms`)**, **CPython (`39.25 ms`)**, and **Node.js V8 (`66.53 ms`)**, with cold-start (`2.35–2.87 ms`) and peak RSS (`3.61–3.80 MB`) an order of magnitude below CPython and Node.js while enforcing deny-by-default capability sandboxing (`sandbox deny net, fs:`) in-process.
 2. **Where C, Rust, and Lua remain faster:**
-   - **C (`2.85 ms`) & Rust (`5.30 ms`)** run unboxed machine integers with zero GC safepoint overhead. Vidyax values are dynamically tagged (`Value` structs) with runtime type checks and GC safepoints on loops/calls.
-   - **Lua (`27.96 ms`)** uses a register-based VM, whereas `vxvm` (`175.56 ms`) is a stack-based bytecode interpreter without a JIT.
+   - **C (`2.68–4.19 ms`) & Rust (`4.52–4.67 ms`)** run unboxed machine integers with zero GC safepoint overhead. Vidyax values are dynamically tagged (`Value` structs) with runtime type checks and GC safepoints on loops/calls — most visible in tight integer division (`Primes 25k`: `72.88 ms` AOT vs `4.52 ms` Rust).
+   - **Lua (`13.30–28.08 ms`)** uses a register-based VM, whereas `vxvm` is a stack-based bytecode interpreter without a JIT.
    - **AOT native compiler (`vxnative.py`)** still uses Python for `.vx -> .c` codegen; porting it to `.vx` and adding unboxed numeric local specialization are the next open engineering milestones.
 
 Reproduce on your own hardware:
