@@ -1,0 +1,503 @@
+# =============================================================================
+# VXCOMP — Full 4-Layer Computing Stack in 100% Pure Vidyax (.vx)
+#   High-Level Source -> Lexer -> Parser -> CodeGen (VXCPU ASM)
+#   -> 2-Pass Assembler -> Virtual CPU Execution + 32x12 Video Framebuffer
+#
+# Run: /home/nans/kronumos-platform/engines/vidyax/vidyax /home/nans/vxcpu/vxcomp.vx
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 1. LEXER (High-Level Mini-Language -> Token Stream)
+# -----------------------------------------------------------------------------
+func is_digit(ch):
+    return contains("0123456789", ch)
+
+func is_alpha(ch):
+    return contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", ch)
+
+func lex_hl(src):
+    toks: []
+    n: len(src)
+    i: 0
+    rpt n + 1:
+        if i >= n:
+            break
+        ch: slice(src, i, i + 1)
+        if ch == " " or ch == "\n" or ch == "\t" or ch == "\r":
+            i: i + 1
+            continue
+        if is_digit(ch):
+            start: i
+            rpt n:
+                if i < n and is_digit(slice(src, i, i + 1)):
+                    i: i + 1
+                else:
+                    break
+            push(toks, {"t": "NUM", "v": slice(src, start, i)})
+            continue
+        if is_alpha(ch):
+            start: i
+            rpt n:
+                if i < n and (is_alpha(slice(src, i, i + 1)) or is_digit(slice(src, i, i + 1))):
+                    i: i + 1
+                else:
+                    break
+            w: slice(src, start, i)
+            if w == "let" or w == "while" or w == "if" or w == "print" or w == "plot":
+                push(toks, {"t": "KW", "v": w})
+            else:
+                push(toks, {"t": "ID", "v": w})
+            continue
+        if i + 1 < n:
+            two: slice(src, i, i + 2)
+            if two == "==" or two == "!=" or two == "<=" or two == ">=":
+                push(toks, {"t": "OP", "v": two})
+                i: i + 2
+                continue
+        if contains("+-*/%<>=(){};,", ch):
+            push(toks, {"t": "SYM", "v": ch})
+            i: i + 1
+            continue
+        i: i + 1
+    push(toks, {"t": "EOF", "v": ""})
+    return toks
+
+# -----------------------------------------------------------------------------
+# 2. RECURSIVE-DESCENT PARSER & DIRECT CODEGEN TO VXCPU ASSEMBLY
+# -----------------------------------------------------------------------------
+func make_cg(toks):
+    return {
+        "toks": toks,
+        "pos": 0,
+        "asm": [],
+        "vars": {},
+        "next_addr": 0,
+        "next_lbl": 0
+    }
+
+func cg_peek(cg):
+    return cg["toks"][cg["pos"]]
+
+func cg_next(cg):
+    t: cg["toks"][cg["pos"]]
+    set(cg, "pos", cg["pos"] + 1)
+    return t
+
+func cg_emit(cg, line):
+    push(cg["asm"], line)
+
+func cg_new_label(cg):
+    id: cg["next_lbl"]
+    set(cg, "next_lbl", id + 1)
+    return "L" + text(id)
+
+func cg_var_addr(cg, name):
+    vmap: cg["vars"]
+    if has(vmap, name):
+        return vmap[name]
+    addr: cg["next_addr"]
+    set(vmap, name, addr)
+    set(cg, "next_addr", addr + 1)
+    return addr
+
+func parse_factor(cg):
+    tok: cg_peek(cg)
+    if tok["t"] == "NUM":
+        cg_next(cg)
+        cg_emit(cg, "MOVI R0, " + tok["v"])
+        cg_emit(cg, "PUSH R0")
+        return 0
+    if tok["t"] == "ID":
+        cg_next(cg)
+        addr: cg_var_addr(cg, tok["v"])
+        cg_emit(cg, "MOVI R1, " + text(addr))
+        cg_emit(cg, "LOAD R0, R1")
+        cg_emit(cg, "PUSH R0")
+        return 0
+    if tok["v"] == "(":
+        cg_next(cg)
+        parse_expr(cg)
+        cg_next(cg)
+        return 0
+    return 0
+
+func parse_term(cg):
+    parse_factor(cg)
+    rpt 64:
+        tok: cg_peek(cg)
+        op: tok["v"]
+        if op == "*" or op == "/" or op == "%":
+            cg_next(cg)
+            parse_factor(cg)
+            cg_emit(cg, "POP R1")
+            cg_emit(cg, "POP R0")
+            if op == "*":
+                cg_emit(cg, "MUL R0, R1")
+            elif op == "/":
+                cg_emit(cg, "DIV R0, R1")
+            else:
+                cg_emit(cg, "MOD R0, R1")
+            cg_emit(cg, "PUSH R0")
+        else:
+            break
+
+func parse_arith(cg):
+    parse_term(cg)
+    rpt 64:
+        tok: cg_peek(cg)
+        op: tok["v"]
+        if op == "+" or op == "-":
+            cg_next(cg)
+            parse_term(cg)
+            cg_emit(cg, "POP R1")
+            cg_emit(cg, "POP R0")
+            if op == "+":
+                cg_emit(cg, "ADD R0, R1")
+            else:
+                cg_emit(cg, "SUB R0, R1")
+            cg_emit(cg, "PUSH R0")
+        else:
+            break
+
+func parse_expr(cg):
+    parse_arith(cg)
+    tok: cg_peek(cg)
+    op: tok["v"]
+    if op == "<" or op == ">" or op == "==" or op == "!=" or op == "<=" or op == ">=":
+        cg_next(cg)
+        parse_arith(cg)
+        cg_emit(cg, "POP R1")
+        cg_emit(cg, "POP R0")
+        cg_emit(cg, "CMP R0, R1")
+        lbl_true: cg_new_label(cg)
+        lbl_end: cg_new_label(cg)
+        if op == "<":
+            cg_emit(cg, "JL " + lbl_true)
+        elif op == ">":
+            cg_emit(cg, "JG " + lbl_true)
+        elif op == "==":
+            cg_emit(cg, "JZ " + lbl_true)
+        elif op == "!=":
+            cg_emit(cg, "JNZ " + lbl_true)
+        elif op == "<=":
+            cg_emit(cg, "JL " + lbl_true)
+            cg_emit(cg, "JZ " + lbl_true)
+        elif op == ">=":
+            cg_emit(cg, "JG " + lbl_true)
+            cg_emit(cg, "JZ " + lbl_true)
+        cg_emit(cg, "MOVI R0, 0")
+        cg_emit(cg, "JMP " + lbl_end)
+        cg_emit(cg, lbl_true + ":")
+        cg_emit(cg, "MOVI R0, 1")
+        cg_emit(cg, lbl_end + ":")
+        cg_emit(cg, "PUSH R0")
+
+func parse_block(cg):
+    cg_next(cg)
+    rpt 500:
+        tok: cg_peek(cg)
+        if tok["v"] == "}" or tok["t"] == "EOF":
+            break
+        parse_stmt(cg)
+    if cg_peek(cg)["v"] == "}":
+        cg_next(cg)
+
+func parse_stmt(cg):
+    tok: cg_peek(cg)
+    if tok["t"] == "KW" and tok["v"] == "let":
+        cg_next(cg)
+        name: cg_next(cg)["v"]
+        cg_next(cg)
+        parse_expr(cg)
+        if cg_peek(cg)["v"] == ";":
+            cg_next(cg)
+        addr: cg_var_addr(cg, name)
+        cg_emit(cg, "POP R0")
+        cg_emit(cg, "MOVI R1, " + text(addr))
+        cg_emit(cg, "STORE R1, R0")
+        return 0
+
+    if tok["t"] == "ID":
+        name: cg_next(cg)["v"]
+        cg_next(cg)
+        parse_expr(cg)
+        if cg_peek(cg)["v"] == ";":
+            cg_next(cg)
+        addr: cg_var_addr(cg, name)
+        cg_emit(cg, "POP R0")
+        cg_emit(cg, "MOVI R1, " + text(addr))
+        cg_emit(cg, "STORE R1, R0")
+        return 0
+
+    if tok["t"] == "KW" and tok["v"] == "print":
+        cg_next(cg)
+        cg_next(cg)
+        parse_expr(cg)
+        cg_next(cg)
+        if cg_peek(cg)["v"] == ";":
+            cg_next(cg)
+        cg_emit(cg, "POP R0")
+        cg_emit(cg, "OUT R0")
+        return 0
+
+    if tok["t"] == "KW" and tok["v"] == "plot":
+        cg_next(cg)
+        cg_next(cg)
+        parse_expr(cg)
+        cg_next(cg)
+        parse_expr(cg)
+        cg_next(cg)
+        parse_expr(cg)
+        cg_next(cg)
+        if cg_peek(cg)["v"] == ";":
+            cg_next(cg)
+        cg_emit(cg, "POP R2")
+        cg_emit(cg, "POP R1")
+        cg_emit(cg, "POP R0")
+        cg_emit(cg, "DRAW R0, R1")
+        return 0
+
+    if tok["t"] == "KW" and tok["v"] == "if":
+        cg_next(cg)
+        cg_next(cg)
+        parse_expr(cg)
+        cg_next(cg)
+        lbl_skip: cg_new_label(cg)
+        cg_emit(cg, "POP R0")
+        cg_emit(cg, "CMPI R0, 0")
+        cg_emit(cg, "JZ " + lbl_skip)
+        parse_block(cg)
+        cg_emit(cg, lbl_skip + ":")
+        return 0
+
+    if tok["t"] == "KW" and tok["v"] == "while":
+        cg_next(cg)
+        lbl_top: cg_new_label(cg)
+        lbl_end: cg_new_label(cg)
+        cg_emit(cg, lbl_top + ":")
+        cg_next(cg)
+        parse_expr(cg)
+        cg_next(cg)
+        cg_emit(cg, "POP R0")
+        cg_emit(cg, "CMPI R0, 0")
+        cg_emit(cg, "JZ " + lbl_end)
+        parse_block(cg)
+        cg_emit(cg, "JMP " + lbl_top)
+        cg_emit(cg, lbl_end + ":")
+        return 0
+
+    cg_next(cg)
+    return 0
+
+func compile_hl_to_asm(src):
+    toks: lex_hl(src)
+    cg: make_cg(toks)
+    rpt 500:
+        if cg_peek(cg)["t"] == "EOF":
+            break
+        parse_stmt(cg)
+    cg_emit(cg, "HALT")
+    return join(cg["asm"], "\n")
+
+# -----------------------------------------------------------------------------
+# 3. 2-PASS VXCPU ASSEMBLER
+# -----------------------------------------------------------------------------
+func reg_idx(tok):
+    t: upper(trim(tok))
+    if t == "R0":
+        return 0
+    if t == "R1":
+        return 1
+    if t == "R2":
+        return 2
+    if t == "R3":
+        return 3
+    return 0
+
+func assemble(asm_src):
+    lines: split(asm_src, "\n")
+    labels: {}
+    clean_lines: []
+    addr: 0
+    for raw in lines:
+        c: trim(raw)
+        if len(c) == 0:
+            continue
+        if slice(c, len(c) - 1, len(c)) == ":":
+            lbl: upper(trim(slice(c, 0, len(c) - 1)))
+            set(labels, lbl, addr)
+        else:
+            push(clean_lines, c)
+            addr: addr + 1
+
+    code: []
+    for c in clean_lines:
+        raw_toks: split(replace(c, ",", " "), " ")
+        toks: []
+        for p in raw_toks:
+            if len(trim(p)) > 0:
+                push(toks, trim(p))
+        op: upper(toks[0])
+        a: 0
+        b: 0
+        if op == "JMP" or op == "JZ" or op == "JNZ" or op == "JL" or op == "JG":
+            a: labels[upper(toks[1])]
+        elif op == "PUSH" or op == "POP" or op == "OUT":
+            a: reg_idx(toks[1])
+        elif op == "MOVI" or op == "CMPI":
+            a: reg_idx(toks[1])
+            b: num(toks[2])
+        elif op != "HALT":
+            a: reg_idx(toks[1])
+            b: reg_idx(toks[2])
+        push(code, {"op": op, "a": a, "b": b})
+    return code
+
+# -----------------------------------------------------------------------------
+# 4. VXCPU VIRTUAL HARDWARE + 32x12 MEMORY-MAPPED VIDEO FRAMEBUFFER
+# -----------------------------------------------------------------------------
+func make_list(n, fill):
+    out: []
+    rpt n:
+        push(out, fill)
+    return out
+
+func run_vxcpu(code, max_cycles):
+    regs: {"0": 0, "1": 0, "2": 0, "3": 0}
+    ram: {}
+    fb_w: 32
+    fb_h: 12
+    fb: {}
+    palette: [".", "#", "@", "*", "+", "X"]
+    stack: []
+    outputs: []
+
+    pc: 0
+    n_code: len(code)
+    zf: false
+    lt: false
+    gt: false
+    cycles: 0
+    halted: false
+
+    rpt max_cycles:
+        if halted or pc < 0 or pc >= n_code:
+            break
+        ins: code[pc]
+        op: ins["op"]
+        a: ins["a"]
+        b: ins["b"]
+        ka: text(a)
+        kb: text(b)
+        next_pc: pc + 1
+        cycles: cycles + 1
+
+        if op == "HALT":
+            halted: true
+        elif op == "MOVI":
+            set(regs, ka, b)
+        elif op == "ADD":
+            set(regs, ka, regs[ka] + regs[kb])
+        elif op == "SUB":
+            set(regs, ka, regs[ka] - regs[kb])
+        elif op == "MUL":
+            set(regs, ka, regs[ka] * regs[kb])
+        elif op == "DIV":
+            set(regs, ka, floor(regs[ka] / regs[kb]))
+        elif op == "MOD":
+            set(regs, ka, regs[ka] % regs[kb])
+        elif op == "CMP":
+            va: regs[ka]
+            vb: regs[kb]
+            zf: va == vb
+            lt: va < vb
+            gt: va > vb
+        elif op == "CMPI":
+            va: regs[ka]
+            zf: va == b
+            lt: va < b
+            gt: va > b
+        elif op == "JMP":
+            next_pc: a
+        elif op == "JZ":
+            if zf:
+                next_pc: a
+        elif op == "JNZ":
+            if not zf:
+                next_pc: a
+        elif op == "JL":
+            if lt:
+                next_pc: a
+        elif op == "JG":
+            if gt:
+                next_pc: a
+        elif op == "PUSH":
+            push(stack, regs[ka])
+        elif op == "POP":
+            set(regs, ka, pop(stack))
+        elif op == "STORE":
+            set(ram, text(regs[ka]), regs[kb])
+        elif op == "LOAD":
+            addr_k: text(regs[kb])
+            if has(ram, addr_k):
+                set(regs, ka, ram[addr_k])
+            else:
+                set(regs, ka, 0)
+        elif op == "OUT":
+            push(outputs, regs[ka])
+        elif op == "DRAW":
+            x: regs[ka]
+            y: regs[kb]
+            cidx: regs["2"] % len(palette)
+            if x >= 0 and x < fb_w and y >= 0 and y < fb_h:
+                set(fb, text(y * fb_w + x), palette[cidx])
+        pc: next_pc
+
+    return {"cycles": cycles, "outputs": outputs, "fb": fb, "w": fb_w, "h": fb_h}
+
+func render_fb(res):
+    fb: res["fb"]
+    w: res["w"]
+    h: res["h"]
+    print "+--------------------------------+"
+    y: 0
+    rpt h:
+        row: ""
+        x: 0
+        rpt w:
+            k: text(y * w + x)
+            if has(fb, k):
+                row: row + fb[k]
+            else:
+                row: row + " "
+            x: x + 1
+        print "|" + row + "|"
+        y: y + 1
+    print "+--------------------------------+"
+
+# =============================================================================
+# DEMO: HIGH-LEVEL PROGRAM COMPILED -> ASSEMBLED -> EXECUTED ON VIRTUAL CPU
+# Draws a border frame + VX geometric mark into the 32x12 Video Framebuffer
+# AND computes sum of primes up to 50!
+# =============================================================================
+t0: now()
+
+hl_program: "let x = 0; while (x < 32) { plot(x, 0, 1); plot(x, 11, 1); x = x + 1; } let y = 0; while (y < 12) { plot(0, y, 1); plot(31, y, 1); y = y + 1; } let i = 0; while (i < 8) { plot(4 + i, 2 + i, 5); plot(18 - i, 2 + i, 5); plot(21 + i, 2 + i, 2); plot(28 - i, 2 + i, 2); i = i + 1; } let n = 2; let psum = 0; while (n <= 50) { let d = 2; let prime = 1; while (d * d <= n) { if (n % d == 0) { prime = 0; } d = d + 1; } if (prime == 1) { psum = psum + n; } n = n + 1; } print(psum);"
+
+print "================================================================"
+print "  VXCOMP — 4-Layer Compiler + Assembler + CPU + GPU Framebuffer"
+print "           100% Written & Executed in Pure Vidyax (.vx)"
+print "================================================================"
+
+asm_code: compile_hl_to_asm(hl_program)
+machine_code: assemble(asm_code)
+res: run_vxcpu(machine_code, 50000)
+
+elapsed_ms: (now() - t0) * 1000
+print "Compiled Instructions : " + text(len(machine_code))
+print "CPU Cycles Executed   : " + text(res["cycles"])
+print "Console OUT (Sum Primes <= 50): " + text(res["outputs"]) + "  (expected [328])"
+print "Total Wall Time       : " + text(elapsed_ms) + " ms"
+print ""
+print "=== 32x12 MEMORY-MAPPED VIDEO FRAMEBUFFER (VX LOGO) ==="
+render_fb(res)

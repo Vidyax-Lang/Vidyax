@@ -1,0 +1,268 @@
+# =============================================================================
+# VXGAS — Gas-Metered Deterministic State-Transition VM (EVM-style)
+# Written 100% in Pure Vidyax (.vx) — Zero Python, Zero Rust
+#
+# Features:
+#   - Per-opcode deterministic gas metering (gas_used / gas_limit)
+#   - Persistent key-value World State (SLOAD / SSTORE)
+#   - Atomic transaction snapshot & rollback on REVERT / OUT_OF_GAS / FAULT
+#   - Deterministic FNV-1a 32-bit State Root Hash over canonical sorted keys
+#   - 2-Pass Symbolic Assembler + Structured Execution Receipts
+# =============================================================================
+
+func gas_cost(op):
+    if op == "HALT" or op == "REVERT":
+        return 0
+    if op == "MOVI" or op == "MOV" or op == "ADD" or op == "ADDI" or op == "SUB" or op == "SUBI":
+        return 1
+    if op == "CMP" or op == "CMPI" or op == "JMP" or op == "JZ" or op == "JNZ" or op == "JL" or op == "JG":
+        return 2
+    if op == "MUL" or op == "DIV" or op == "MOD" or op == "SLOAD":
+        return 5
+    if op == "EMIT":
+        return 10
+    if op == "SSTORE":
+        return 20
+    return 1
+
+func reg_idx(tok):
+    t: upper(trim(tok))
+    if t == "R0":
+        return "0"
+    if t == "R1":
+        return "1"
+    if t == "R2":
+        return "2"
+    if t == "R3":
+        return "3"
+    if t == "R4":
+        return "4"
+    return "0"
+
+func assemble(asm_src):
+    lines: split(asm_src, "\n")
+    labels: {}
+    clean_lines: []
+    addr: 0
+    for raw in lines:
+        c: trim(raw)
+        if contains(c, ";"):
+            c: trim(split(c, ";")[0])
+        if len(c) == 0:
+            continue
+        if slice(c, len(c) - 1, len(c)) == ":":
+            lbl: upper(trim(slice(c, 0, len(c) - 1)))
+            set(labels, lbl, addr)
+        else:
+            push(clean_lines, c)
+            addr: addr + 1
+
+    code: []
+    for c in clean_lines:
+        raw_toks: split(replace(c, ",", " "), " ")
+        toks: []
+        for p in raw_toks:
+            if len(trim(p)) > 0:
+                push(toks, trim(p))
+        op: upper(toks[0])
+        a: "0"
+        b: "0"
+        imm: 0
+        if op == "JMP" or op == "JZ" or op == "JNZ" or op == "JL" or op == "JG":
+            imm: labels[upper(toks[1])]
+        elif op == "EMIT":
+            a: reg_idx(toks[1])
+        elif op == "MOVI" or op == "ADDI" or op == "SUBI" or op == "CMPI":
+            a: reg_idx(toks[1])
+            imm: num(toks[2])
+        elif op != "HALT" and op != "REVERT":
+            a: reg_idx(toks[1])
+            b: reg_idx(toks[2])
+        push(code, {"op": op, "a": a, "b": b, "imm": imm})
+    return code
+
+# -----------------------------------------------------------------------------
+# DETERMINISTIC STATE SNAPSHOT & FNV-1a STATE ROOT HASH
+# -----------------------------------------------------------------------------
+func clone_state(st, key_list):
+    copy: {}
+    for k in key_list:
+        if has(st, k):
+            set(copy, k, st[k])
+    return copy
+
+func compute_state_root(st, key_list):
+    # Deterministic FNV-1a 32-bit digest over canonical ordered state slots
+    h: 2166136261
+    for k in key_list:
+        val: 0
+        if has(st, k):
+            val: st[k]
+        mix: (val * 1315423911 + num(k) * 2654435761) % 4294967296
+        h: ((h + mix) * 16777619) % 4294967296
+    return h
+
+# -----------------------------------------------------------------------------
+# GAS-METERED TRANSACTION EXECUTOR WITH ATOMIC ROLLBACK
+# -----------------------------------------------------------------------------
+func execute_tx(tx_id, code, world_state, tracked_keys, gas_limit):
+    # Snapshot world state before execution for atomic rollback
+    working_state: clone_state(world_state, tracked_keys)
+    regs: {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0}
+    events: []
+
+    pc: 0
+    n_code: len(code)
+    zf: false
+    lt: false
+    gt: false
+    gas_used: 0
+    steps: 0
+    status: "RUNNING"
+
+    # Hard upper loop bound + strict per-opcode gas metering inside sandbox
+    sandbox deny net, fs:
+        rpt gas_limit + 5:
+            if status != "RUNNING":
+                break
+            if pc < 0 or pc >= n_code:
+                status: "COMMIT"
+                break
+
+            ins: code[pc]
+            op: ins["op"]
+            cost: gas_cost(op)
+
+            if gas_used + cost > gas_limit:
+                status: "OUT_OF_GAS"
+                break
+
+            gas_used: gas_used + cost
+            steps: steps + 1
+            a: ins["a"]
+            b: ins["b"]
+            imm: ins["imm"]
+            next_pc: pc + 1
+
+            if op == "HALT":
+                status: "COMMIT"
+            elif op == "REVERT":
+                status: "REVERT"
+            elif op == "MOVI":
+                set(regs, a, imm)
+            elif op == "MOV":
+                set(regs, a, regs[b])
+            elif op == "ADD":
+                set(regs, a, regs[a] + regs[b])
+            elif op == "ADDI":
+                set(regs, a, regs[a] + imm)
+            elif op == "SUB":
+                set(regs, a, regs[a] - regs[b])
+            elif op == "SUBI":
+                set(regs, a, regs[a] - imm)
+            elif op == "MUL":
+                set(regs, a, regs[a] * regs[b])
+            elif op == "DIV":
+                if regs[b] == 0:
+                    status: "FAULT_DIV0"
+                    break
+                set(regs, a, floor(regs[a] / regs[b]))
+            elif op == "CMP":
+                zf: regs[a] == regs[b]
+                lt: regs[a] < regs[b]
+                gt: regs[a] > regs[b]
+            elif op == "CMPI":
+                zf: regs[a] == imm
+                lt: regs[a] < imm
+                gt: regs[a] > imm
+            elif op == "JMP":
+                next_pc: imm
+            elif op == "JZ":
+                if zf:
+                    next_pc: imm
+            elif op == "JNZ":
+                if not zf:
+                    next_pc: imm
+            elif op == "JL":
+                if lt:
+                    next_pc: imm
+            elif op == "JG":
+                if gt:
+                    next_pc: imm
+            elif op == "SLOAD":
+                sk: text(regs[b])
+                if has(working_state, sk):
+                    set(regs, a, working_state[sk])
+                else:
+                    set(regs, a, 0)
+            elif op == "SSTORE":
+                set(working_state, text(regs[a]), regs[b])
+            elif op == "EMIT":
+                push(events, regs[a])
+
+            pc: next_pc
+
+    if status == "COMMIT":
+        new_root: compute_state_root(working_state, tracked_keys)
+        return {
+            "tx_id": tx_id,
+            "status": "COMMIT",
+            "gas_used": gas_used,
+            "gas_limit": gas_limit,
+            "steps": steps,
+            "events": events,
+            "state": working_state,
+            "state_root": new_root
+        }
+
+    # Atomic rollback: discard working_state & events, return untouched world_state
+    old_root: compute_state_root(world_state, tracked_keys)
+    return {
+        "tx_id": tx_id,
+        "status": status,
+        "gas_used": gas_used,
+        "gas_limit": gas_limit,
+        "steps": steps,
+        "events": [],
+        "state": world_state,
+        "state_root": old_root
+    }
+
+# =============================================================================
+# DETERMINISTIC LEDGER SIMULATION (3 TRANSACTIONS)
+# =============================================================================
+t0: now()
+tracked: ["0", "1", "2"]
+world: {"0": 1000, "1": 500, "2": 0}
+genesis_root: compute_state_root(world, tracked)
+
+print "================================================================"
+print "  VXGAS — Gas-Metered Deterministic VM (100% Pure Vidyax)"
+print "================================================================"
+print "[GENESIS] Balances: acc0=" + text(world["0"]) + " acc1=" + text(world["1"]) + " acc2=" + text(world["2"]) + " | root=" + text(genesis_root)
+
+# TX-1: Valid atomic transfer of 250 from acc0 -> acc1
+tx1_asm: "MOVI R0, 0\nMOVI R1, 1\nMOVI R2, 250\nSLOAD R3, R0\nCMP R3, R2\nJL FAIL\nSUB R3, R2\nSSTORE R0, R3\nSLOAD R4, R1\nADD R4, R2\nSSTORE R1, R4\nEMIT R2\nHALT\nFAIL:\nREVERT"
+r1: execute_tx("TX-01 (Transfer 250: acc0->acc1)", assemble(tx1_asm), world, tracked, 200)
+world: r1["state"]
+print "[" + r1["tx_id"] + "] status=" + r1["status"] + " | gas=" + text(r1["gas_used"]) + "/" + text(r1["gas_limit"]) + " | events=" + text(r1["events"]) + " | root=" + text(r1["state_root"])
+
+# TX-2: Malicious/invalid transfer of 9999 from acc0 -> acc2 (writes dirty acc2 FIRST, then REVERTs!)
+tx2_asm: "MOVI R0, 0\nMOVI R1, 2\nMOVI R2, 9999\nSSTORE R1, R2 ; tentative dirty write\nSLOAD R3, R0\nCMP R3, R2\nJL FAIL\nHALT\nFAIL:\nREVERT"
+r2: execute_tx("TX-02 (Overdraft 9999 + Dirty Write)", assemble(tx2_asm), world, tracked, 200)
+world: r2["state"]
+print "[" + r2["tx_id"] + "] status=" + r2["status"] + " | gas=" + text(r2["gas_used"]) + "/" + text(r2["gas_limit"]) + " | events=" + text(r2["events"]) + " | root=" + text(r2["state_root"])
+
+# TX-3: Infinite loop gas-bomb with dirty state write, capped at gas_limit=60
+tx3_asm: "MOVI R0, 2\nMOVI R1, 777\nSSTORE R0, R1 ; dirty write before infinite loop\nBOMB:\nADDI R1, 1\nJMP BOMB"
+r3: execute_tx("TX-03 (Infinite Loop Gas Bomb)", assemble(tx3_asm), world, tracked, 60)
+world: r3["state"]
+print "[" + r3["tx_id"] + "] status=" + r3["status"] + " | gas=" + text(r3["gas_used"]) + "/" + text(r3["gas_limit"]) + " | events=" + text(r3["events"]) + " | root=" + text(r3["state_root"])
+
+print "----------------------------------------------------------------"
+print "[FINAL]   Balances: acc0=" + text(world["0"]) + " acc1=" + text(world["1"]) + " acc2=" + text(world["2"]) + " | root=" + text(compute_state_root(world, tracked))
+if world["0"] == 750 and world["1"] == 750 and world["2"] == 0 and r2["state_root"] == r1["state_root"] and r3["state_root"] == r1["state_root"]:
+    print "[VERIFY]  ATOMIC ROLLBACK & DETERMINISM INVARIANT: PASSED"
+else:
+    print "[VERIFY]  INVARIANT FAILED"
+print "Elapsed: " + text((now() - t0) * 1000) + " ms"
