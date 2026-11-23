@@ -1,0 +1,133 @@
+# vxflow.vx — Sandboxed Policy & Data Workflow Evaluator in pure Vidyax
+# Run with zero Python:
+#   ./vidyax contoh/vxflow.vx
+#   ./vidyax --max-instr 5000000 --max-mem 8388608 contoh/vxflow.vx
+
+func redact_token(s, prefix):
+    if not contains(s, prefix):
+        return s
+    parts: split(s, prefix)
+    out: parts[0]
+    i: 1
+    rpt len(parts) - 1:
+        chunk: parts[i]
+        # Mask up to the next whitespace
+        words: split(chunk, " ")
+        if len(words) > 1:
+            rest: slice(words, 1, len(words))
+            out: out + "[REDACTED:" + prefix + "] " + join(rest, " ")
+        else:
+            out: out + "[REDACTED:" + prefix + "]"
+        i: i + 1
+    return out
+
+func apply_step(payload, step):
+    if step == "trim":
+        return {"ok": true, "value": trim(payload), "reason": ""}
+
+    if step == "lower":
+        return {"ok": true, "value": lower(payload), "reason": ""}
+
+    if step == "redact_secrets":
+        v: redact_token(payload, "sk-")
+        v: redact_token(v, "ghp_")
+        v: redact_token(v, "AKIA")
+        return {"ok": true, "value": v, "reason": ""}
+
+    if len(step) >= 8 and slice(step, 0, 8) == "deny_if:":
+        needle: slice(step, 8, len(step))
+        if contains(lower(payload), lower(needle)):
+            return {"ok": false, "value": payload, "reason": "POLICY_BLOCK(" + needle + ")"}
+        return {"ok": true, "value": payload, "reason": ""}
+
+    if len(step) >= 8 and slice(step, 0, 8) == "max_len:":
+        limit: num(slice(step, 8, len(step)))
+        if len(payload) > limit:
+            return {"ok": true, "value": slice(payload, 0, limit) + "...", "reason": ""}
+        return {"ok": true, "value": payload, "reason": ""}
+
+    if step == "evil_fs_escape":
+        writefile("/tmp/vxflow_pwn.txt", payload)
+        return {"ok": true, "value": payload, "reason": ""}
+
+    if step == "evil_net_escape":
+        get("http://127.0.0.1:9/exfil")
+        return {"ok": true, "value": payload, "reason": ""}
+
+    return {"ok": false, "value": payload, "reason": "UNKNOWN_STEP(" + step + ")"}
+
+func run_pipeline(payload, pipeline_spec):
+    raw_steps: split(pipeline_spec, "|")
+    cur: payload
+    result: {"status": "ALLOW", "value": cur, "reason": "OK"}
+
+    # Every untrusted rule/transform runs inside an inescapable capability sandbox.
+    sandbox deny net, fs:
+        for raw in raw_steps:
+            step: trim(raw)
+            if len(step) == 0:
+                continue
+            try:
+                res: apply_step(cur, step)
+                if not res["ok"]:
+                    return {"status": "DENY", "value": cur, "reason": res["reason"]}
+                cur: res["value"]
+            catch err:
+                return {"status": "SANDBOX_TRAP", "value": cur, "reason": err}
+
+    return {"status": "ALLOW", "value": cur, "reason": "OK"}
+
+# ---------------------------------------------------------------------------
+# Entrypoint: CLI file mode OR built-in 6-event sandbox verification suite
+#   Demo mode : ./vidyax contoh/vxflow.vx
+#   File mode : ./vidyax --allow-fs contoh/vxflow.vx <input.log> [pipeline_spec]
+# ---------------------------------------------------------------------------
+t0: now()
+default_pipe: "trim | redact_secrets | deny_if:drop table | deny_if:rm -rf | max_len:80"
+cli: args()
+
+events: []
+if len(cli) >= 1:
+    in_file: cli[0]
+    pipe_spec: default_pipe
+    if len(cli) >= 2:
+        pipe_spec: cli[1]
+    raw_content: readfile(in_file)
+    raw_lines: split(raw_content, "\n")
+    idx: 1
+    for line in raw_lines:
+        if len(trim(line)) > 0:
+            push(events, {"id": "line-" + text(idx), "pipe": pipe_spec, "data": line})
+        idx: idx + 1
+else:
+    events: [
+        {"id": "evt-01", "pipe": default_pipe, "data": "   Deploy ok with key sk-live998877 and token ghp_abc123xyz   "},
+        {"id": "evt-02", "pipe": default_pipe, "data": "SELECT * FROM users; DROP TABLE sessions;"},
+        {"id": "evt-03", "pipe": default_pipe, "data": "cleanup script: rm -rf /var/log"},
+        {"id": "evt-04", "pipe": "trim | evil_fs_escape", "data": "attempting filesystem exfiltration"},
+        {"id": "evt-05", "pipe": "trim | evil_net_escape", "data": "attempting network exfiltration"},
+        {"id": "evt-06", "pipe": default_pipe, "data": "   Normal telemetry heartbeat from worker-node-07 with AWS key AKIA9988776655   "}
+    ]
+
+allowed: 0
+denied: 0
+trapped: 0
+
+print "=== vxflow — Sandboxed Policy & Workflow Engine (Vidyax) ==="
+for ev in events:
+    out: run_pipeline(ev["data"], ev["pipe"])
+    st: out["status"]
+    if st == "ALLOW":
+        allowed: allowed + 1
+        print "[" + ev["id"] + "] ALLOW        -> " + out["value"]
+    elif st == "DENY":
+        denied: denied + 1
+        print "[" + ev["id"] + "] DENY         -> " + out["reason"]
+    else:
+        trapped: trapped + 1
+        print "[" + ev["id"] + "] SANDBOX_TRAP -> " + out["reason"]
+
+elapsed_ms: (now() - t0) * 1000
+print "------------------------------------------------------------"
+print "Summary: total=" + text(len(events)) + " allow=" + text(allowed) + " deny=" + text(denied) + " sandbox_trapped=" + text(trapped)
+print "Elapsed: " + text(elapsed_ms) + " ms"
