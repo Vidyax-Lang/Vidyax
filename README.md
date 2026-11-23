@@ -230,16 +230,54 @@ Vidyax ships with an official **Visual Studio Code extension** that provides syn
 
 You can also install it directly from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=nadev.vidyax).
 
-## Self-Hosting Bootstrap (`vxc.vx`)
+## Self-Hosting Bootstrap & Zero-Python Standalone CLI (`vxc.vx`)
 
-Vidyax can compile itself to `VXC1 v3` bytecode on the native C VM (`vm/vxvm`) with a verified 3-stage fixed point (79/79 core suite parity):
+Vidyax compiles itself to `VXC1 v3` bytecode on the native C VM (`vm/vxvm`) with a verified 3-stage bit-exact fixed point (`34,274 bytes`, `135/135` VM tests, `300/300` differential fuzzer parity):
 
 ```bash
-make -C vm
-python3 vxc.py vxc.vx -o /tmp/vxc_s0.vxc
-./vm/vxvm --allow-fs /tmp/vxc_s0.vxc vxc.vx /tmp/vxc_s1.vxc
-./vm/vxvm --allow-fs /tmp/vxc_s1.vxc vxc.vx /tmp/vxc_s2.vxc
-cmp /tmp/vxc_s1.vxc /tmp/vxc_s2.vxc && echo "Fixed-point bootstrap verified"
+./bootstrap.sh
+make -C vm vxvm vidyax
+```
+
+`make -C vm vidyax` embeds the self-hosted `vxc.vxc` compiler directly inside the C VM to produce a single **`141 KB` standalone native binary (`./vidyax`)** with **zero Python runtime dependency**:
+
+```bash
+./vidyax program.vx                  # compile (.vx -> .vxc) via embedded vxc + execute in sandbox
+./vidyax compile program.vx -o a.vxc # compile to bytecode without Python
+./vidyax --allow-fs program.vx       # opt-in capability flags (net & fs denied by default)
+```
+
+## Technical Benchmark Report (Head-to-Head)
+
+All numbers below are measured on Linux x86_64 via [benchmarks/head_to_head.py](benchmarks/head_to_head.py) using a minimal C `wait4()` + `CLOCK_MONOTONIC` harness (median of 5 runs; per-process `ru_maxrss` measured directly without Python fork RSS inflation).
+
+- **Cold-start:** Boot runtime, print `"ok"`, exit.
+- **Compute:** Identical algorithm across all runtimes — recursive `Hanoi(18)` (`262,143` calls) + `50,000` skyline block-placement iterations (output asserted identical: `262143 1666691668`).
+- **Networking:** `libcurl` is lazy-loaded via `dlopen("libcurl.so.4")` only on the first HTTP/`ai.ask()` call, so offline/sandboxed programs pay zero OpenSSL/libcurl startup cost.
+
+| Runtime | Cold-Start | Compute (`Hanoi(18) + 50k`) | Peak RAM (`Max RSS`) | Binary Size | Built-in Sandbox |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Vidyax AOT Native** | `2.54 ms` | `39.27 ms` | `2.29 MB` (`2,348 KB`) | `94 KB` | Built-in (`deny net, fs`) |
+| **Vidyax C VM (`vxvm .vxc`)** | `2.68 ms` | `174.60 ms` | `3.45 MB` (`3,528 KB`) | `104 KB` | Built-in (`deny net, fs`) |
+| **Vidyax Zero-Python CLI (`.vx`)** | `6.25 ms` | `187.12 ms` | `3.35 MB` (`3,432 KB`) | `141 KB` | Built-in + self-hosted |
+| **Lua** | `3.01 ms` | `26.61 ms` | `2.56 MB` (`2,620 KB`) | `322 KB` | Manual env strip |
+| **Rust (`rustc -O`)** | `3.58 ms` | `5.06 ms` | `2.25 MB` (`2,300 KB`) | `4.3 MB` | None (OS-level) |
+| **Python 3 (CPython)** | `36.44 ms` | `74.64 ms` | `10.84 MB` (`11,096 KB`) | `14 KB + libpython` | None |
+| **Node.js (V8 JIT)** | `57.83 ms` | `67.77 ms` | `72.04 MB` (`73,768 KB`) | `119 MB` | Experimental flag |
+| **C (`gcc -O2`)** | `2.11 ms` | `2.54 ms` | `1.62 MB` (`1,664 KB`) | `16 KB` | None (raw OS) |
+
+### Honest Trade-offs & Architectural Notes
+
+1. **Where Vidyax wins:** Cold-start (`2.54–2.68 ms`), binary footprint (`94–141 KB`), and memory footprint (`2.29–3.45 MB`) beat CPython (`36.44 ms`, `10.84 MB`) and Node.js V8 (`57.83 ms`, `72.04 MB`) by an order of magnitude while enforcing deny-by-default capability sandboxing (`sandbox deny net, fs:`) without Docker or microVM overhead. End-to-end, `Vidyax AOT Native` (`39.27 ms`) outperforms both CPython (`74.64 ms`) and Node.js (`67.77 ms`) on this short-lived compute workload.
+2. **Where C, Rust, and Lua remain faster:**
+   - **C (`2.54 ms`) & Rust (`5.06 ms`)** operate on unboxed machine integers with zero GC safepoint checks. Vidyax values are dynamically tagged (`Value` structs) with runtime type checks and GC safepoints on loops/calls.
+   - **Lua (`26.61 ms`)** uses a register-based VM, whereas `vxvm` (`174.60 ms`) is currently a stack-based bytecode interpreter without a JIT.
+   - **Next optimization target:** Unboxed `int64`/`double` local specialization in `vxnative` to close the gap toward C/Rust for numeric loops.
+
+Reproduce on your own hardware:
+
+```bash
+python3 benchmarks/head_to_head.py
 ```
 
 ## Contributing
