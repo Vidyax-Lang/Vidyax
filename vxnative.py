@@ -116,9 +116,6 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
-#ifdef VX_HAVE_CURL
-    if (allow_net) curl_global_init(CURL_GLOBAL_DEFAULT);
-#endif
     vx_ctx = &main_ctx;
     main_ctx.perms = (uint8_t)((allow_net ? PERM_NET : 0) |
                                (allow_fs  ? PERM_FS  : 0));
@@ -148,9 +145,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "[vxnative] gc runs: %llu, peak mem: %zu bytes\n",
                 (unsigned long long)gc_runs, peak_mem);
     VX_UNLOCK();
-#ifdef VX_HAVE_CURL
-    curl_global_cleanup();
-#endif
     return 0;
 }
 """
@@ -603,7 +597,7 @@ def native_file(path, out=None, keep_c=False):
                 ["pkg-config", "--libs", "libcurl"],
                 capture_output=True, text=True).stdout.split()
             cmd = (base_cmd + ["-DVX_HAVE_CURL", *curl_cflags, cfile, *mods,
-                               "-o", out] + subcortex_libs + curl_libs)
+                               "-o", out] + subcortex_libs)
         else:
             cmd = base_cmd + [cfile, *mods, "-o", out] + subcortex_libs
         r = subprocess.run(cmd, capture_output=True, text=True)

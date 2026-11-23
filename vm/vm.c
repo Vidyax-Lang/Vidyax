@@ -426,16 +426,10 @@ int vx_execute_vxc(const char *path) {
     if (nprotos == 0) { fprintf(stderr, "[Vidyax] empty program\n"); return 1; }
     verify();
     if (vx_profile) prof_init();
-#ifdef VX_HAVE_CURL
-    if (allow_net) curl_global_init(CURL_GLOBAL_DEFAULT);
-#endif
     VX_LOCK();
     start_clock = clock();
     run();
     VX_UNLOCK();
-#ifdef VX_HAVE_CURL
-    if (allow_net) curl_global_cleanup();
-#endif
     if (vx_profile) prof_report();
     return 0;
 }

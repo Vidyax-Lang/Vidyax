@@ -119,8 +119,65 @@ static int json_extract_string(const char *buf, const char *key, SB *out) {
     return 0;
 }
 
-/* ---- HTTP transport (libcurl) ---- */
+/* ---- HTTP transport (lazy-loaded libcurl via dlopen for ~2ms cold-start) ---- */
 #ifdef VX_HAVE_CURL
+#include <dlfcn.h>
+
+typedef CURLcode (*fn_curl_global_init)(long);
+typedef CURL *(*fn_curl_easy_init)(void);
+typedef CURLcode (*fn_curl_easy_setopt)(CURL *, CURLoption, ...);
+typedef CURLcode (*fn_curl_easy_perform)(CURL *);
+typedef CURLcode (*fn_curl_easy_getinfo)(CURL *, CURLINFO, ...);
+typedef const char *(*fn_curl_easy_strerror)(CURLcode);
+typedef void (*fn_curl_easy_cleanup)(CURL *);
+typedef struct curl_slist *(*fn_curl_slist_append)(struct curl_slist *, const char *);
+typedef void (*fn_curl_slist_free_all)(struct curl_slist *);
+
+static struct {
+    int loaded;
+    void *handle;
+    fn_curl_global_init global_init;
+    fn_curl_easy_init easy_init;
+    fn_curl_easy_setopt easy_setopt;
+    fn_curl_easy_perform easy_perform;
+    fn_curl_easy_getinfo easy_getinfo;
+    fn_curl_easy_strerror easy_strerror;
+    fn_curl_easy_cleanup easy_cleanup;
+    fn_curl_slist_append slist_append;
+    fn_curl_slist_free_all slist_free_all;
+} vx_curl;
+
+static int vx_curl_load(char *err, size_t errn) {
+    if (vx_curl.loaded) return vx_curl.handle ? 0 : -1;
+    vx_curl.loaded = 1;
+    void *h = dlopen("libcurl.so.4", RTLD_LAZY | RTLD_LOCAL);
+    if (!h) h = dlopen("libcurl.so", RTLD_LAZY | RTLD_LOCAL);
+    if (!h) {
+        snprintf(err, errn, "libcurl unavailable: %s", dlerror());
+        return -1;
+    }
+    vx_curl.handle = h;
+    vx_curl.global_init   = (fn_curl_global_init)dlsym(h, "curl_global_init");
+    vx_curl.easy_init     = (fn_curl_easy_init)dlsym(h, "curl_easy_init");
+    vx_curl.easy_setopt   = (fn_curl_easy_setopt)dlsym(h, "curl_easy_setopt");
+    vx_curl.easy_perform  = (fn_curl_easy_perform)dlsym(h, "curl_easy_perform");
+    vx_curl.easy_getinfo  = (fn_curl_easy_getinfo)dlsym(h, "curl_easy_getinfo");
+    vx_curl.easy_strerror = (fn_curl_easy_strerror)dlsym(h, "curl_easy_strerror");
+    vx_curl.easy_cleanup  = (fn_curl_easy_cleanup)dlsym(h, "curl_easy_cleanup");
+    vx_curl.slist_append  = (fn_curl_slist_append)dlsym(h, "curl_slist_append");
+    vx_curl.slist_free_all = (fn_curl_slist_free_all)dlsym(h, "curl_slist_free_all");
+    if (!vx_curl.global_init || !vx_curl.easy_init || !vx_curl.easy_setopt ||
+        !vx_curl.easy_perform || !vx_curl.easy_getinfo || !vx_curl.easy_strerror ||
+        !vx_curl.easy_cleanup || !vx_curl.slist_append || !vx_curl.slist_free_all) {
+        dlclose(h);
+        vx_curl.handle = NULL;
+        snprintf(err, errn, "libcurl symbols missing");
+        return -1;
+    }
+    vx_curl.global_init(CURL_GLOBAL_DEFAULT);
+    return 0;
+}
+
 static size_t http_write(char *ptr, size_t sz, size_t nm, void *ud) {
     sb_put((SB *)ud, ptr, sz * nm);
     return sz * nm;
@@ -130,32 +187,33 @@ static size_t http_write(char *ptr, size_t sz, size_t nm, void *ud) {
  * returns -1 with a message in err. */
 int http_request(const char *url, const char *auth, const char *body,
                         SB *resp, long *code, char *err, size_t errn) {
-    CURL *c = curl_easy_init();
+    if (vx_curl_load(err, errn) != 0) return -1;
+    CURL *c = vx_curl.easy_init();
     if (!c) { snprintf(err, errn, "curl init failed"); return -1; }
     struct curl_slist *hdrs = NULL;
-    curl_easy_setopt(c, CURLOPT_URL, url);
-    curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, http_write);
-    curl_easy_setopt(c, CURLOPT_WRITEDATA, resp);
-    curl_easy_setopt(c, CURLOPT_USERAGENT, "vidyax/1.1");
-    curl_easy_setopt(c, CURLOPT_TIMEOUT, body ? 60L : 15L);
-    curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
-    curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
+    vx_curl.easy_setopt(c, CURLOPT_URL, url);
+    vx_curl.easy_setopt(c, CURLOPT_WRITEFUNCTION, http_write);
+    vx_curl.easy_setopt(c, CURLOPT_WRITEDATA, resp);
+    vx_curl.easy_setopt(c, CURLOPT_USERAGENT, "vidyax/1.1");
+    vx_curl.easy_setopt(c, CURLOPT_TIMEOUT, body ? 60L : 15L);
+    vx_curl.easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
+    vx_curl.easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
     if (auth) {
         char ab[600];
         snprintf(ab, sizeof ab, "Authorization: Bearer %s", auth);
-        hdrs = curl_slist_append(hdrs, ab);
+        hdrs = vx_curl.slist_append(hdrs, ab);
     }
     if (body) {
-        hdrs = curl_slist_append(hdrs, "Content-Type: application/json");
-        curl_easy_setopt(c, CURLOPT_POSTFIELDS, body);
-        curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE, (long)strlen(body));
+        hdrs = vx_curl.slist_append(hdrs, "Content-Type: application/json");
+        vx_curl.easy_setopt(c, CURLOPT_POSTFIELDS, body);
+        vx_curl.easy_setopt(c, CURLOPT_POSTFIELDSIZE, (long)strlen(body));
     }
-    if (hdrs) curl_easy_setopt(c, CURLOPT_HTTPHEADER, hdrs);
-    CURLcode rc = curl_easy_perform(c);
-    if (rc == CURLE_OK) curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, code);
-    else snprintf(err, errn, "%s", curl_easy_strerror(rc));
-    if (hdrs) curl_slist_free_all(hdrs);
-    curl_easy_cleanup(c);
+    if (hdrs) vx_curl.easy_setopt(c, CURLOPT_HTTPHEADER, hdrs);
+    CURLcode rc = vx_curl.easy_perform(c);
+    if (rc == CURLE_OK) vx_curl.easy_getinfo(c, CURLINFO_RESPONSE_CODE, code);
+    else snprintf(err, errn, "%s", vx_curl.easy_strerror(rc));
+    if (hdrs) vx_curl.slist_free_all(hdrs);
+    vx_curl.easy_cleanup(c);
     return rc == CURLE_OK ? 0 : -1;
 }
 #endif

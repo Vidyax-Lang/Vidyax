@@ -9,7 +9,7 @@ SRCS := vm.c value.c gc.c net.c builtins.c loader.c debug.c profile.c task.c vx_
 CURL ?= $(shell pkg-config --exists libcurl 2>/dev/null && echo 1 || echo 0)
 ifeq ($(CURL),1)
   CURL_CFLAGS := -DVX_HAVE_CURL $(shell pkg-config --cflags libcurl)
-  CURL_LIBS   := $(shell pkg-config --libs libcurl)
+  CURL_LIBS   :=
 endif
 
 vxvm: $(SRCS) vx.h
