@@ -96,11 +96,15 @@ static void push(Value v) {
     stack[sp++] = v;
 }
 static Value pop(void) { return stack[--sp]; }
+int vx_argc = 0;
+char **vx_argv = NULL;
 #define SAFEPOINT do { if (gc_stress || gc_pending) gc(); } while (0)
 """
 
 MAIN_TMPL = r"""
 int main(int argc, char **argv) {
+    vx_argc = argc;
+    vx_argv = argv;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--allow-net") == 0) allow_net = 1;
         else if (strcmp(argv[i], "--allow-fs") == 0) allow_fs = 1;
@@ -113,7 +117,7 @@ int main(int argc, char **argv) {
         }
     }
 #ifdef VX_HAVE_CURL
-    curl_global_init(CURL_GLOBAL_DEFAULT);
+    if (allow_net) curl_global_init(CURL_GLOBAL_DEFAULT);
 #endif
     vx_ctx = &main_ctx;
     main_ctx.perms = (uint8_t)((allow_net ? PERM_NET : 0) |

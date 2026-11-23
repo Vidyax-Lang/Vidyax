@@ -421,6 +421,26 @@ void vx_run_loop(void) {
     }
 }
 
+int vx_execute_vxc(const char *path) {
+    load(path);
+    if (nprotos == 0) { fprintf(stderr, "[Vidyax] empty program\n"); return 1; }
+    verify();
+    if (vx_profile) prof_init();
+#ifdef VX_HAVE_CURL
+    if (allow_net) curl_global_init(CURL_GLOBAL_DEFAULT);
+#endif
+    VX_LOCK();
+    start_clock = clock();
+    run();
+    VX_UNLOCK();
+#ifdef VX_HAVE_CURL
+    if (allow_net) curl_global_cleanup();
+#endif
+    if (vx_profile) prof_report();
+    return 0;
+}
+
+#ifndef VX_STANDALONE_CLI
 int main(int argc, char **argv) {
     const char *path = NULL;
     for (int i = 1; i < argc; i++) {
@@ -460,23 +480,9 @@ int main(int argc, char **argv) {
                 " [--max-time SECS] <program.vxc>\n");
         return 1;
     }
-    load(path);
-    if (nprotos == 0) { fprintf(stderr, "[Vidyax] empty program\n"); return 1; }
-    verify();
-    if (vx_profile) prof_init();
-#ifdef VX_HAVE_CURL
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-#endif
-    VX_LOCK();          
-    start_clock = clock();
-    run();
-    VX_UNLOCK();
-#ifdef VX_HAVE_CURL
-    curl_global_cleanup();
-#endif
-    if (vx_profile) prof_report();
-    return 0;
+    return vx_execute_vxc(path);
 }
+#endif
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 

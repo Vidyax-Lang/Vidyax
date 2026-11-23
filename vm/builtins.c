@@ -502,7 +502,7 @@ static Value b_find(int argc, Value *a) {
 }
 static Value b_slice(int argc, Value *args) {
     if (argc < 2 || argc > 3) vm_error("slice() takes 2 or 3 arguments");
-    if (args[0].t != V_LIST && args[0].t != V_STR) vm_error("slice() needs list or text");
+    if (args[0].t != V_LIST && args[0].t != V_STR) vm_error("slice() needs a list or text");
     if (!numlike(args[1])) vm_error("slice() needs numeric start");
     long long start = (long long)as_num(args[1]);
     long long end = -1;

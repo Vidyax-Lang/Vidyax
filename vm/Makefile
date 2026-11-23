@@ -15,6 +15,9 @@ endif
 vxvm: $(SRCS) vx.h
 	$(CC) $(CFLAGS) $(CURL_CFLAGS) -o vxvm $(SRCS) $(LDFLAGS) $(CURL_LIBS)
 
+vidyax: $(SRCS) vidyax_main.c vxc_embedded.h vx.h
+	$(CC) $(CFLAGS) -DVX_STANDALONE_CLI $(CURL_CFLAGS) -o ../vidyax $(SRCS) vidyax_main.c $(LDFLAGS) $(CURL_LIBS)
+
 debug: $(SRCS) vx.h
 	$(CC) -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -Wall -Wextra -DVXVM_RUNTIME $(CURL_CFLAGS) -o vxvm $(SRCS) $(LDFLAGS) $(CURL_LIBS)
 
@@ -22,6 +25,6 @@ test: vxvm
 	cd .. && python3 tests_vm.py
 
 clean:
-	rm -f vxvm
+	rm -f vxvm ../vidyax
 
 .PHONY: debug test clean
