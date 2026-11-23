@@ -4,10 +4,10 @@
  * native C virtual machine binary. Zero Python dependency at runtime.
  */
 
-#include "vx.h"
-#include "vxc_embedded.h"
 #include <sys/wait.h>
 #include <unistd.h>
+#include "vx.h"
+#include "vxc_embedded.h"
 
 extern int vx_execute_vxc(const char *path);
 

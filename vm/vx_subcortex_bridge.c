@@ -1,7 +1,4 @@
 #define _GNU_SOURCE
-#include "vx_subcortex_bridge.h"
-#include "tokenectomy_subcortex.h"
-
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -14,6 +11,9 @@
 #include <mach-o/dyld.h>
 #endif
 #endif
+
+#include "vx_subcortex_bridge.h"
+#include "tokenectomy_subcortex.h"
 
 /* Compile-time C-ABI struct layout checks matching Rust const assertions in src/ffi.rs */
 typedef char vx_sa_tkmy_buf_sz[(sizeof(struct tkmy_buf) == 2 * sizeof(size_t)) ? 1 : -1];
