@@ -1,0 +1,48 @@
+# Head-to-Head Benchmark Workload in Pure Vidyax (.vx)
+# Run with zero Python: ./vidyax benchmarks/head_to_head.vx
+
+func hanoi(n, a, b, c):
+    if n <= 1:
+        return 1
+    return hanoi(n - 1, a, c, b) + 1 + hanoi(n - 1, c, b, a)
+
+func skyline(n):
+    h0: 0
+    h1: 0
+    h2: 0
+    h3: 0
+    total: 0
+    i: 0
+    rpt n:
+        w: (i % 2) + 1
+        h: (i % 4) + 1
+        col: i % 3
+        if col == 0:
+            m: h0
+            if w == 2 and h1 > m:
+                m: h1
+            nh: m + h
+            h0: nh
+            if w == 2:
+                h1: nh
+        elif col == 1:
+            m: h1
+            if w == 2 and h2 > m:
+                m: h2
+            nh: m + h
+            h1: nh
+            if w == 2:
+                h2: nh
+        else:
+            m: h2
+            if w == 2 and h3 > m:
+                m: h3
+            nh: m + h
+            h2: nh
+            if w == 2:
+                h3: nh
+        total: total + nh
+        i: i + 1
+    return total
+
+print text(hanoi(18, 1, 3, 2)) + " " + text(skyline(50000))
